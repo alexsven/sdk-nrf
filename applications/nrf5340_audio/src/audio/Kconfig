@@ -30,12 +30,35 @@ config AUDIO_FRAME_DURATION_US
 	help
 		Audio frame duration in µs
 
-config AUDIO_SAMPLE_RATE_HZ
-	int "Sample rate Hz"
-	range 48000 48000
-	default 48000
+choice AUDIO_SAMPLE_RATE
+	prompt "Audio sample rate"
+	default AUDIO_SAMPLE_RATE_48000_HZ if BT_AUDIO_BROADCAST_DEFAULT || BT_AUDIO_UNICAST_DEFAULT
+	default AUDIO_SAMPLE_RATE_16000_HZ if BT_AUDIO_BROADCAST_16_2_1 || BT_AUDIO_BROADCAST_16_2_2 || BT_AUDIO_UNICAST_16_2_1
+	default AUDIO_SAMPLE_RATE_24000_HZ if BT_AUDIO_BROADCAST_24_2_1 || BT_AUDIO_BROADCAST_24_2_2 || BT_AUDIO_UNICAST_24_2_1
 	help
-		For now 48 kHz is the only sample rate supported
+		This will be selected based on the BAP settings
+
+config AUDIO_SAMPLE_RATE_16000_HZ
+	bool "16 kHz sampled audio"
+	depends on AUDIO_SOURCE_I2S
+
+config AUDIO_SAMPLE_RATE_24000_HZ
+	bool "24 kHz sampled audio"
+	depends on AUDIO_SOURCE_I2S
+
+config AUDIO_SAMPLE_RATE_48000_HZ
+	bool "48 kHz sampled audio"
+endchoice
+
+config AUDIO_SAMPLE_RATE_HZ
+	int
+	default 16000 if AUDIO_SAMPLE_RATE_16000_HZ
+	default 24000 if AUDIO_SAMPLE_RATE_24000_HZ
+	default 48000 if AUDIO_SAMPLE_RATE_48000_HZ
+	help
+		For now only 16, 24 and 48 kHz sample rates are supported.
+		All three sample rates are supported for I2S input and output.
+		Only 48 kHz is supported for USB input
 
 choice AUDIO_BIT_DEPTH
 	prompt "Audio bit depth"
@@ -46,14 +69,6 @@ choice AUDIO_BIT_DEPTH
 config AUDIO_BIT_DEPTH_16
 	bool "16 bit audio"
 
-config AUDIO_BIT_DEPTH_24
-	bool "24 bit audio"
-	help
-		Setting a 24 bit depth for I2S leads to a mismatch between
-		requested MCK and actual MCK. Even though requested LRCLK is
-		48 kHz, actual LRCLK might be 42 kHz or 51 kHz, depending on
-		ratio and ACLK settings
-
 config AUDIO_BIT_DEPTH_32
 	bool "32 bit audio"
 endchoice
@@ -61,7 +76,6 @@ endchoice
 config AUDIO_BIT_DEPTH_BITS
 	int
 	default 16 if AUDIO_BIT_DEPTH_16
-	default 32 if AUDIO_BIT_DEPTH_24
 	default 32 if AUDIO_BIT_DEPTH_32
 	help
 		Bit depth of one sample in storage. Note that 24 bit depth
@@ -70,7 +84,6 @@ config AUDIO_BIT_DEPTH_BITS
 config AUDIO_BIT_DEPTH_OCTETS
 	int
 	default 2 if AUDIO_BIT_DEPTH_16
-	default 4 if AUDIO_BIT_DEPTH_24
 	default 4 if AUDIO_BIT_DEPTH_32
 	help
 		Bit depth of one sample in storage given in octets.
@@ -152,7 +165,9 @@ visible if SW_CODEC_LC3
 
 config LC3_BITRATE
 	int "Bitrate for LC3"
-	default 96000
+	default 96000 if BT_AUDIO_BROADCAST_DEFAULT || BT_AUDIO_UNICAST_DEFAULT
+	default 32000 if BT_AUDIO_BROADCAST_16_2_1 || BT_AUDIO_BROADCAST_16_2_2 || BT_AUDIO_UNICAST_16_2_1
+	default 48000 if BT_AUDIO_BROADCAST_24_2_1 || BT_AUDIO_BROADCAST_24_2_2 || BT_AUDIO_UNICAST_24_2_1
 
 config LC3_BITRATE_MAX
 	int "Max bitrate for LC3"
@@ -198,6 +213,10 @@ config LOG_AUDIO_SYSTEM_LEVEL
 	int "Log level for audio system"
 	default 3
 
+config LOG_SW_CODEC_SELECT_LEVEL
+	int "Log level for sw_codec_select"
+	default 3
+
 config LOG_STREAMCTRL_LEVEL
 	int "Log level for streamctrl"
 	default 3
@@ -235,12 +254,12 @@ menu "Stack sizes"
 config ENCODER_STACK_SIZE
 	int "Stack size for encoder thread"
 	default 6750 if AUDIO_BIT_DEPTH_16
-	default 11264 if AUDIO_BIT_DEPTH_24 || AUDIO_BIT_DEPTH_32
+	default 11264 if AUDIO_BIT_DEPTH_32
 
 config AUDIO_DATAPATH_STACK_SIZE
 	int "Stack size for audio datapath thread"
 	default 4096 if AUDIO_BIT_DEPTH_16
-	default 7168 if AUDIO_BIT_DEPTH_24 || AUDIO_BIT_DEPTH_32
+	default 7168 if AUDIO_BIT_DEPTH_32
 
 endmenu # Stack sizes
 endmenu # Audio

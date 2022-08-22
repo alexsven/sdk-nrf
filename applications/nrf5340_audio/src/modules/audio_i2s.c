@@ -69,6 +69,16 @@ static enum audio_i2s_state state = AUDIO_I2S_STATE_UNINIT;
 
 PINCTRL_DT_DEFINE(I2S_NL);
 
+#if CONFIG_AUDIO_SAMPLE_RATE_16000_HZ
+#define CONFIG_AUDIO_RATIO NRF_I2S_RATIO_384X
+#elif CONFIG_AUDIO_SAMPLE_RATE_24000_HZ
+#define CONFIG_AUDIO_RATIO NRF_I2S_RATIO_256X
+#elif CONFIG_AUDIO_SAMPLE_RATE_48000_HZ
+#define CONFIG_AUDIO_RATIO NRF_I2S_RATIO_128X
+#else
+#error "Current AUDIO_SAMPLE_RATE_HZ setting not supported"
+#endif
+
 static nrfx_i2s_config_t cfg = {
 	/* Pins are configured by pinctrl. */
 	.skip_gpio_cfg = true,
@@ -77,19 +87,12 @@ static nrfx_i2s_config_t cfg = {
 	.mode = NRF_I2S_MODE_MASTER,
 	.format = NRF_I2S_FORMAT_I2S,
 	.alignment = NRF_I2S_ALIGN_LEFT,
+	.ratio = CONFIG_AUDIO_RATIO,
+	.mck_setup = 0x66666000,
 #if (CONFIG_AUDIO_BIT_DEPTH_16)
 	.sample_width = NRF_I2S_SWIDTH_16BIT,
-	.mck_setup = 0x66666000,
-	.ratio = NRF_I2S_RATIO_128X,
-#elif (CONFIG_AUDIO_BIT_DEPTH_24)
-	.sample_width = NRF_I2S_SWIDTH_24BIT,
-	/* Clock mismatch warning: See CONFIG_AUDIO_24_BIT in KConfig */
-	.mck_setup = 0x2BE2B000,
-	.ratio = NRF_I2S_RATIO_48X,
 #elif (CONFIG_AUDIO_BIT_DEPTH_32)
 	.sample_width = NRF_I2S_SWIDTH_32BIT,
-	.mck_setup = 0x66666000,
-	.ratio = NRF_I2S_RATIO_128X,
 #else
 #error Invalid bit depth selected
 #endif /* (CONFIG_AUDIO_BIT_DEPTH_16) */

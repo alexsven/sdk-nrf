@@ -155,7 +155,7 @@ manifest:
       groups:
       - find-my
     - name: sdk-lc3
-      revision: c47d9ee21c9cd8626a903c2e2f0c80c0920a1eb8
+      revision: 9b58e626fb4b67d60a7b8b9838da6a5365dc60b0
       path: modules/lib/lc3
       groups:
       - nrf5340_audio
