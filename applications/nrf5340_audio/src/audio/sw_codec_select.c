@@ -263,7 +263,7 @@ int sw_codec_init(struct sw_codec_config sw_codec_cfg)
 			}
 			uint16_t pcm_bytes_req_enc;
 
-			LOG_DBG("Encode: %dHz %dbits %dus %dbps %d channel(s)",
+			LOG_WRN("Encode: %dHz %dbits %dus %dbps %d channel(s)",
 				CONFIG_AUDIO_SAMPLE_RATE_HZ, CONFIG_AUDIO_BIT_DEPTH_BITS,
 				CONFIG_AUDIO_FRAME_DURATION_US, sw_codec_cfg.encoder.bitrate,
 				sw_codec_cfg.encoder.channel_mode);
@@ -284,7 +284,7 @@ int sw_codec_init(struct sw_codec_config sw_codec_cfg)
 				return -EALREADY;
 			}
 
-			LOG_DBG("Decode: %dHz %dbits %dus %d channel(s)",
+			LOG_WRN("Decode: %dHz %dbits %dus %d channel(s)",
 				CONFIG_AUDIO_SAMPLE_RATE_HZ, CONFIG_AUDIO_BIT_DEPTH_BITS,
 				CONFIG_AUDIO_FRAME_DURATION_US, sw_codec_cfg.decoder.channel_mode);
 

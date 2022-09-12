@@ -9,7 +9,6 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/audio/audio.h>
 #include <bluetooth/audio/capabilities.h>
-
 /* TODO: Remove when a get_info function is implemented in host */
 #include <../subsys/bluetooth/audio/endpoint.h>
 
@@ -46,6 +45,25 @@ static bool playing_state = true;
 
 static int bis_headset_cleanup(bool from_sync_lost_cb);
 
+const char *bt_hex_unreal(const void *buf, size_t len)
+{
+	static const char hex[] = "0123456789abcdef";
+	static char str[129];
+	const uint8_t *b = buf;
+	size_t i;
+
+	len = MIN(len, (sizeof(str) - 1) / 2);
+
+	for (i = 0; i < len; i++) {
+		str[i * 2] = hex[b[i] >> 4];
+		str[i * 2 + 1] = hex[b[i] & 0xf];
+	}
+
+	str[i * 2] = '\0';
+
+	return str;
+}
+
 static void print_codec(const struct bt_codec *codec)
 {
 	if (codec->id == BT_CODEC_LC3_ID) {
@@ -70,6 +88,21 @@ static void print_codec(const struct bt_codec *codec)
 	}
 }
 
+static void print_codec_data(const struct bt_codec_data *codec_data)
+{
+	LOG_WRN("%d", codec_data[0].data.data_len);
+	LOG_WRN("%d", codec_data[2].data.data_len);
+	LOG_WRN("%d", codec_data[3].data.data_len);
+	LOG_WRN("%d", codec_data[4].data.data_len);
+
+	LOG_WRN("Freq: %s", bt_hex_unreal(codec_data[0].data.data, codec_data[0].data.data_len));
+	LOG_WRN("Duration: %s",
+		bt_hex_unreal(codec_data[1].data.data, codec_data[1].data.data_len));
+	LOG_WRN("Len: %s", bt_hex_unreal(codec_data[2].data.data, codec_data[2].data.data_len));
+	LOG_WRN("Frame blocks: %s",
+		bt_hex_unreal(codec_data[3].data.data, codec_data[3].data.data_len));
+}
+
 static bool bitrate_check(const struct bt_codec *codec)
 {
 	uint32_t octets_per_sdu = bt_codec_cfg_get_octets_per_frame(codec);
@@ -87,7 +120,7 @@ static bool bitrate_check(const struct bt_codec *codec)
 
 static bool adv_data_parse(struct bt_data *data, void *user_data)
 {
-	if (data->type == BT_DATA_NAME_COMPLETE && data->data_len == DEVICE_NAME_PEER_LEN) {
+	if (data->type == 0x30 && data->data_len) {
 		memcpy((char *)user_data, data->data, data->data_len);
 		return false;
 	}
@@ -145,11 +178,15 @@ static struct bt_audio_stream_ops stream_ops = { .started = stream_started_cb,
 static bool scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *ad,
 			 uint32_t broadcast_id)
 {
-	char name[DEVICE_NAME_PEER_LEN];
+	char bis_name[] = "SQ Stream";
+	char bis_name2[] = "HQ Stream";
+	char name[20];
 
 	bt_data_parse(ad, adv_data_parse, (void *)name);
 
-	if (strcmp(name, DEVICE_NAME_PEER) == 0) {
+	//LOG_WRN("Found: %s", name);
+
+	if (strcmp(name, bis_name2) == 0) {
 		LOG_INF("Broadcast source %s found", name);
 		return true;
 	}
@@ -227,28 +264,27 @@ static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_a
 	}
 	channel = BIT(channel);
 
-	LOG_DBG("Received BASE with %u subgroup(s) from broadcast sink", base->subgroup_count);
+	LOG_WRN("Received BASE with %u subgroup(s) from broadcast sink", base->subgroup_count);
 
 	/* Search each subgroup for the BIS of interest */
 	for (size_t i = 0U; i < base->subgroup_count; i++) {
 		for (size_t j = 0U; j < base->subgroups[i].bis_count; j++) {
 			const uint8_t index = base->subgroups[i].bis_data[j].index;
 
-			LOG_DBG("BIS %u   index = %u", j, index);
+			LOG_WRN("BIS %u   index = %u", j, index);
+			// LOG_WRN("Data count: %d", base->subgroups[i].bis_data[j].data_count);
 
 			/* If this is a BIS of interest then attach to and start a stream */
-			if (index == channel) {
-				if (bitrate_check((struct bt_codec *)&base->subgroups[i].codec)) {
-					base_bis_index_bitfield |= BIT(index);
+			// print_codec_data(base->subgroups[i].bis_data[j].data);
 
-					streams[i].codec =
-						(struct bt_codec *)&base->subgroups[i].codec;
-					print_codec(streams[i].codec);
-
-					LOG_DBG("Stream %u in subgroup %u from broadcast sink", i,
-						j);
-				}
+			//if (index == channel) {
+			if (bitrate_check((struct bt_codec *)&base->subgroups[i].codec)) {
+				base_bis_index_bitfield |= BIT(index);
+				streams[i].codec = (struct bt_codec *)&base->subgroups[i].codec;
+				print_codec(streams[i].codec);
+				LOG_DBG("Stream %u in subgroup %u from broadcast sink", i, j);
 			}
+			//}
 		}
 	}
 
@@ -257,7 +293,7 @@ static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_a
 		ERR_CHK(ret);
 		bis_index_bitfield = base_bis_index_bitfield & bis_index_mask;
 
-		LOG_DBG("Waiting for syncable");
+		LOG_WRN("Waiting for syncable");
 	} else {
 		LOG_WRN("Found no suitable streams");
 	}
@@ -267,7 +303,8 @@ static void syncable_cb(struct bt_audio_broadcast_sink *sink, bool encrypted)
 {
 	int ret;
 
-	if (streams[0].ep->status.state == BT_AUDIO_EP_STATE_STREAMING || !playing_state) {
+	if (streams[1].ep->status.state == BT_AUDIO_EP_STATE_STREAMING || !playing_state) {
+		LOG_WRN("Returning");
 		return;
 	}
 

@@ -10,11 +10,11 @@
 #include <zephyr.h>
 #include <bluetooth/audio/audio.h>
 
-#define DEVICE_NAME_PEER CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME_PEER "PUBLIC BROADCASTER"
 #define DEVICE_NAME_PEER_LEN (sizeof(DEVICE_NAME_PEER) - 1)
 
 #define LE_AUDIO_SDU_SIZE_OCTETS(bitrate) (bitrate / (1000000 / CONFIG_AUDIO_FRAME_DURATION_US) / 8)
-#define LE_AUDIO_PRES_DELAY_US 10000u
+#define LE_AUDIO_PRES_DELAY_US 20000u
 
 #if CONFIG_TRANSPORT_CIS
 #define BT_AUDIO_LC3_UNICAST_PRESET_DEFAULT(_loc, _stream_context)                                 \
@@ -58,12 +58,12 @@ BUILD_ASSERT(0, "Unsupported LC3 codec preset for unicast");
 
 #if CONFIG_TRANSPORT_BIS
 #define BT_AUDIO_LC3_BROADCAST_PRESET_DEFAULT(_loc, _stream_context)                               \
-	BT_AUDIO_LC3_PRESET(                                                                       \
-		BT_CODEC_LC3_CONFIG(                                                               \
-			BT_CODEC_CONFIG_LC3_FREQ_48KHZ, BT_CODEC_CONFIG_LC3_DURATION_10, _loc,     \
-			LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE), 1, _stream_context),         \
-		BT_CODEC_LC3_QOS_10_UNFRAMED(LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE), 4u,     \
-					     20u, LE_AUDIO_PRES_DELAY_US))
+	BT_AUDIO_LC3_PRESET(BT_CODEC_LC3_CONFIG(BT_CODEC_CONFIG_LC3_FREQ_48KHZ,                    \
+						BT_CODEC_CONFIG_LC3_DURATION_10, _loc,             \
+						LE_AUDIO_SDU_SIZE_OCTETS(100), 1,                  \
+						_stream_context),                                  \
+			    BT_CODEC_LC3_QOS_10_UNFRAMED(LE_AUDIO_SDU_SIZE_OCTETS(100), 4u, 20u,   \
+							 LE_AUDIO_PRES_DELAY_US))
 
 #if CONFIG_AUDIO_SOURCE_USB
 #if !CONFIG_BT_AUDIO_BROADCAST_DEFAULT
@@ -97,6 +97,11 @@ BUILD_ASSERT(0, "Unsupported LC3 codec preset for unicast");
 #elif CONFIG_BT_AUDIO_BROADCAST_24_2_2
 #define BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO                                                \
 	BT_AUDIO_LC3_BROADCAST_PRESET_24_2_2(BT_AUDIO_LOCATION_FRONT_LEFT,                         \
+					     BT_AUDIO_CONTEXT_TYPE_MEDIA)
+
+#elif CONFIG_BT_AUDIO_BROADCAST_48_2_1
+#define BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO                                                \
+	BT_AUDIO_LC3_BROADCAST_PRESET_48_2_1(BT_AUDIO_LOCATION_FRONT_LEFT,                         \
 					     BT_AUDIO_CONTEXT_TYPE_MEDIA)
 
 #else
