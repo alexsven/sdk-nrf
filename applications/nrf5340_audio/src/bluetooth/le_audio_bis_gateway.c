@@ -40,8 +40,7 @@ static struct bt_audio_broadcast_source *broadcast_source;
 static struct bt_audio_stream streams[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 //static struct bt_audio_stream *streams_p[ARRAY_SIZE(streams)];
 
-static struct bt_audio_lc3_preset lc3_preset = BT_AUDIO_LC3_BROADCAST_PRESET_48_2_1(
-	BT_AUDIO_LOCATION_FRONT_LEFT, BT_AUDIO_CONTEXT_TYPE_MEDIA);
+static struct bt_audio_lc3_preset lc3_preset = BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO;
 
 struct bt_le_ext_adv *adv;
 
@@ -154,8 +153,8 @@ static void adv_create(void)
 	struct bt_data ext_ad[2];
 	struct bt_data per_ad;
 	uint32_t broadcast_id;
-	char name[] = "SQ Stream";
-	char name2[] = "HQ Stream";
+	char name[] = "SQ Stream UPF";
+	char name2[] = "HQ Stream UPF";
 
 	/* Create a non-connectable non-scannable advertising set */
 	ret = bt_le_ext_adv_create(BT_LE_EXT_ADV_NCONN_NAME, NULL, &adv);
@@ -185,15 +184,15 @@ static void adv_create(void)
 	if (lc3_preset.qos.sdu == 100) {
 		LOG_WRN("HQ broadcast");
 		ext_ad[0].data = name2;
-		ext_ad[0].data_len = strlen(name2) + sizeof(ext_ad[0].type);
+		ext_ad[0].data_len = strlen(name2);
 	} else if (lc3_preset.qos.sdu == 60) {
 		LOG_WRN("SQ broadcast");
 		ext_ad[0].data = name;
-		ext_ad[0].data_len = strlen(name) + sizeof(ext_ad[0].type);
+		ext_ad[0].data_len = strlen(name);
 	}
 
 	ext_ad[1].type = BT_DATA_SVC_DATA16;
-	ext_ad[1].data_len = ad_buf.len + sizeof(ext_ad[1].type);
+	ext_ad[1].data_len = ad_buf.len;
 	ext_ad[1].data = ad_buf.data;
 
 	ret = bt_le_ext_adv_set_data(adv, ext_ad, ARRAY_SIZE(ext_ad), NULL, 0);
@@ -251,7 +250,7 @@ static void initialize(void)
 		}
 
 		/* Create advertising set */
-		adv_create(0);
+		adv_create();
 
 		initialized = true;
 	}
