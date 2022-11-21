@@ -67,7 +67,7 @@
 
 #if CONFIG_AUDIO_SOURCE_USB
 #if !CONFIG_BT_AUDIO_BROADCAST_RECOMMENDED
-#error USB only supports 48kHz
+//#error USB only supports 48kHz
 #endif /* !CONFIG_BT_AUDIO_BROADCAST_RECOMMENDED */
 #define BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO                                                \
 	BT_AUDIO_LC3_BROADCAST_PRESET_RECOMMENDED(BT_AUDIO_LOCATION_FRONT_LEFT,                    \

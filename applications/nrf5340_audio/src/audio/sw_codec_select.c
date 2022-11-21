@@ -24,10 +24,12 @@ int sw_codec_encode(void *pcm_data, size_t pcm_size, uint8_t **encoded_data, siz
 {
 	/* Temp storage for split stereo PCM signal */
 	char pcm_data_mono[AUDIO_CH_NUM][PCM_NUM_BYTES_MONO] = { 0 };
+	char pcm_data_mono_half[AUDIO_CH_NUM][PCM_NUM_BYTES_MONO / 2] = { 0 };
 	/* Make sure we have enough space for two frames (stereo) */
 	static uint8_t m_encoded_data[ENC_MAX_FRAME_SIZE * AUDIO_CH_NUM];
 
 	size_t pcm_block_size_mono;
+	size_t pcm_block_size_mono_half;
 	int ret;
 
 	if (!m_config.encoder.enabled) {
@@ -39,6 +41,7 @@ int sw_codec_encode(void *pcm_data, size_t pcm_size, uint8_t **encoded_data, siz
 	case SW_CODEC_LC3: {
 #if (CONFIG_SW_CODEC_LC3)
 		uint16_t encoded_bytes_written;
+		uint16_t total_encoded_bytes_written = 0;
 
 		/* Since LC3 is a single channel codec, we must split the
 		 * stereo PCM stream
@@ -63,22 +66,34 @@ int sw_codec_encode(void *pcm_data, size_t pcm_size, uint8_t **encoded_data, siz
 		}
 		case SW_CODEC_STEREO: {
 			ret = sw_codec_lc3_enc_run(pcm_data_mono[AUDIO_CH_L], pcm_block_size_mono,
-						   LC3_USE_BITRATE_FROM_INIT, AUDIO_CH_L,
-						   sizeof(m_encoded_data), m_encoded_data,
-						   &encoded_bytes_written);
+						   96000, AUDIO_CH_L, sizeof(m_encoded_data),
+						   m_encoded_data, &encoded_bytes_written);
+			if (ret) {
+				LOG_WRN("Failing left");
+				return ret;
+			}
+			total_encoded_bytes_written += encoded_bytes_written;
+
+			/* Re-sample to 24kHz here */
+			ret = pscm_two_channel_split(pcm_data_mono[AUDIO_CH_R], pcm_block_size_mono,
+						     CONFIG_AUDIO_BIT_DEPTH_BITS,
+						     pcm_data_mono_half[AUDIO_CH_R],
+						     pcm_data_mono_half[AUDIO_CH_L],
+						     &pcm_block_size_mono_half);
+
 			if (ret) {
 				return ret;
 			}
-
-			ret = sw_codec_lc3_enc_run(pcm_data_mono[AUDIO_CH_R], pcm_block_size_mono,
-						   LC3_USE_BITRATE_FROM_INIT, AUDIO_CH_R,
+			ret = sw_codec_lc3_enc_run(pcm_data_mono_half[AUDIO_CH_R],
+						   pcm_block_size_mono_half, 48000, AUDIO_CH_R,
 						   sizeof(m_encoded_data) - encoded_bytes_written,
 						   m_encoded_data + encoded_bytes_written,
 						   &encoded_bytes_written);
 			if (ret) {
+				LOG_WRN("Failing right");
 				return ret;
 			}
-			encoded_bytes_written += encoded_bytes_written;
+			total_encoded_bytes_written += encoded_bytes_written;
 			break;
 		}
 		default:
@@ -87,7 +102,7 @@ int sw_codec_encode(void *pcm_data, size_t pcm_size, uint8_t **encoded_data, siz
 		}
 
 		*encoded_data = m_encoded_data;
-		*encoded_size = encoded_bytes_written;
+		*encoded_size = total_encoded_bytes_written;
 
 #endif /* (CONFIG_SW_CODEC_LC3) */
 		break;
@@ -284,7 +299,7 @@ int sw_codec_init(struct sw_codec_config sw_codec_cfg)
 				return -EALREADY;
 			}
 
-			LOG_DBG("Decode: %dHz %dbits %dus %d channel(s)",
+			LOG_WRN("Decode: %dHz %dbits %dus %d channel(s)",
 				CONFIG_AUDIO_SAMPLE_RATE_HZ, CONFIG_AUDIO_BIT_DEPTH_BITS,
 				CONFIG_AUDIO_FRAME_DURATION_US, sw_codec_cfg.decoder.channel_mode);
 

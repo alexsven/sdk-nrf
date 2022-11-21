@@ -73,6 +73,12 @@ static void print_codec(const struct bt_codec *codec)
 static bool bitrate_check(const struct bt_codec *codec)
 {
 	uint32_t octets_per_sdu = bt_codec_cfg_get_octets_per_frame(codec);
+	uint32_t freq = bt_codec_cfg_get_freq(codec);
+
+	if (freq != CONFIG_AUDIO_SAMPLE_RATE_HZ) {
+		LOG_WRN("Wrong sample rate");
+		return false;
+	}
 
 	if (octets_per_sdu < LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MIN)) {
 		LOG_WRN("Bitrate too low");
@@ -135,6 +141,7 @@ static void stream_recv_cb(struct bt_audio_stream *stream, const struct bt_iso_r
 	recv_cnt++;
 	if ((recv_cnt % 1000U) == 0U) {
 		LOG_DBG("Received %d total ISO packets", recv_cnt);
+		LOG_WRN("Size: %d", buf->len);
 	}
 }
 
@@ -242,8 +249,10 @@ static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_a
 						(struct bt_codec *)&base->subgroups[i].codec;
 					print_codec(streams[i].codec);
 
-					LOG_DBG("Stream %d in subgroup %d from broadcast sink", i,
+					LOG_WRN("Stream %d in subgroup %d from broadcast sink", i,
 						j);
+				} else {
+					LOG_WRN("Bitrate check failed");
 				}
 			}
 		}

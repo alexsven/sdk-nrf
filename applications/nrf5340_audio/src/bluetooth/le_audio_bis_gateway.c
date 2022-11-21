@@ -10,6 +10,7 @@
 #include <zephyr/bluetooth/audio/audio.h>
 /* TODO: Remove when a get_info function is implemented in host */
 #include <../subsys/bluetooth/audio/endpoint.h>
+#include <../subsys/bluetooth/audio/audio_iso.h>
 
 #include "macros_common.h"
 #include "ctrl_events.h"
@@ -20,6 +21,10 @@ LOG_MODULE_REGISTER(bis_gateway, CONFIG_BLE_LOG_LEVEL);
 
 BUILD_ASSERT(CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT <= 2,
 	     "A maximum of two streams are currently supported");
+
+static struct bt_audio_lc3_preset preset48 = BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO;
+static struct bt_audio_lc3_preset preset24 = BT_AUDIO_LC3_BROADCAST_PRESET_24_2_1(
+	BT_AUDIO_LOCATION_FRONT_LEFT, BT_AUDIO_CONTEXT_TYPE_MEDIA);
 
 #define HCI_ISO_BUF_ALLOC_PER_CHAN 2
 
@@ -35,12 +40,10 @@ static struct net_buf_pool *iso_tx_pools[] = { LISTIFY(CONFIG_BT_AUDIO_BROADCAST
 						       NET_BUF_POOL_PTR_ITERATE, (,)) };
 /* clang-format on */
 
+static struct bt_audio_stream streams[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 static struct bt_audio_broadcast_source *broadcast_source;
 
-static struct bt_audio_stream streams[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
-static struct bt_audio_stream *streams_p[ARRAY_SIZE(streams)];
-
-static struct bt_audio_lc3_preset lc3_preset = BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO;
+//static struct bt_audio_lc3_preset lc3_preset = BT_AUDIO_LC3_BROADCAST_PRESET_NRF5340_AUDIO;
 
 static atomic_t iso_tx_pool_alloc[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 static bool delete_broadcast_src;
@@ -216,6 +219,11 @@ static int initialize(void)
 {
 	int ret;
 	static bool initialized;
+	struct bt_audio_broadcast_source_stream_param
+		stream_params[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
+	struct bt_audio_broadcast_source_subgroup_param
+		subgroup_params[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
+	struct bt_audio_broadcast_source_create_param create_param;
 
 	if (initialized) {
 		LOG_WRN("Already initialized");
@@ -223,14 +231,27 @@ static int initialize(void)
 	}
 
 	for (int i = 0; i < ARRAY_SIZE(streams); i++) {
-		streams_p[i] = &streams[i];
-		streams[i].ops = &stream_ops;
+		stream_params[i].stream = &streams[i];
+		stream_params[i].data = NULL;
+		stream_params[i].data_count = 0;
+		bt_audio_stream_cb_register(stream_params[i].stream, &stream_ops);
 	}
+
+	subgroup_params[0].params_count = 1;
+	subgroup_params[0].params = &stream_params[0];
+	subgroup_params[0].codec = &preset48.codec;
+
+	subgroup_params[1].params_count = 1;
+	subgroup_params[1].params = &stream_params[1];
+	subgroup_params[1].codec = &preset24.codec;
+
+	create_param.params_count = 2;
+	create_param.params = subgroup_params;
+	create_param.qos = &preset48.qos;
 
 	LOG_DBG("Creating broadcast source");
 
-	ret = bt_audio_broadcast_source_create(streams_p, ARRAY_SIZE(streams_p), &lc3_preset.codec,
-					       &lc3_preset.qos, &broadcast_source);
+	ret = bt_audio_broadcast_source_create(&create_param, &broadcast_source);
 	if (ret) {
 		LOG_ERR("Failed to create broadcast source, ret: %d", ret);
 		return ret;
@@ -302,7 +323,9 @@ int le_audio_send(uint8_t const *const data, size_t size)
 	static bool wrn_printed[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 	struct net_buf *buf;
 	size_t num_streams = ARRAY_SIZE(streams);
-	size_t data_size = size / num_streams;
+
+	size_t data_size_first = (size / 3) * 2;
+	size_t data_size_second = size - data_size_first;
 
 	for (int i = 0; i < num_streams; i++) {
 		if (streams[i].ep->status.state != BT_AUDIO_EP_STATE_STREAMING) {
@@ -329,7 +352,11 @@ int le_audio_send(uint8_t const *const data, size_t size)
 		}
 
 		net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
-		net_buf_add_mem(buf, &data[i * data_size], data_size);
+		if (i == 0) {
+			net_buf_add_mem(buf, &data[0], data_size_first);
+		} else {
+			net_buf_add_mem(buf, &data[data_size_first], data_size_second);
+		}
 
 		atomic_inc(&iso_tx_pool_alloc[i]);
 
@@ -345,7 +372,7 @@ int le_audio_send(uint8_t const *const data, size_t size)
 #if (CONFIG_AUDIO_SOURCE_I2S)
 	struct bt_iso_tx_info tx_info = { 0 };
 
-	ret = bt_iso_chan_get_tx_sync(streams[0].iso, &tx_info);
+	ret = bt_iso_chan_get_tx_sync(&streams[0].ep->iso->chan, &tx_info);
 
 	if (ret) {
 		LOG_DBG("Error getting ISO TX anchor point: %d", ret);

@@ -170,6 +170,9 @@ config BT_AUDIO_BROADCAST_SINK
 config BT_AUDIO_BROADCAST_SNK_STREAM_COUNT
 	default 2
 
+config BT_AUDIO_BROADCAST_SNK_SUBGROUP_COUNT
+	default 2
+
 config BT_ISO_MAX_CHAN
 	default 2
 
@@ -194,6 +197,9 @@ config BT_ISO_TX_BUF_COUNT
 	default 2
 
 config BT_AUDIO_BROADCAST_SRC_STREAM_COUNT
+	default 2
+
+config BT_AUDIO_BROADCAST_SRC_SUBGROUP_COUNT
 	default 2
 
 config BT_ISO_MAX_CHAN
