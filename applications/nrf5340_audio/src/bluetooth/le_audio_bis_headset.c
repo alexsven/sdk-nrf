@@ -180,7 +180,8 @@ static bool scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf
 	char name[DEVICE_NAME_PEER_LEN];
 
 	bt_data_parse(ad, adv_data_parse, (void *)name);
-	if (strncmp(name, CONFIG_BT_DEVICE_NAME, DEVICE_NAME_PEER_LEN) == 0) {
+	LOG_WRN("Name: %s", name);
+	if (strncmp(name, "Nordic SQ PBA", DEVICE_NAME_PEER_LEN) == 0) {
 		LOG_INF("Broadcast source %s found", name);
 		return true;
 	}
@@ -301,6 +302,8 @@ static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_a
 static void syncable_cb(struct bt_audio_broadcast_sink *sink, bool encrypted)
 {
 	int ret;
+	static uint8_t bis_encrypted_key[16] = { 'N', 'R', 'F', '5', '3', '4', '0', '_',
+						 'B', 'I', 'S', '_', 'D', 'E', 'M', 'O' };
 
 	if (active_audio_stream.stream->ep->status.state == BT_AUDIO_EP_STATE_STREAMING ||
 	    !playing_state) {
@@ -309,14 +312,13 @@ static void syncable_cb(struct bt_audio_broadcast_sink *sink, bool encrypted)
 	}
 
 	if (encrypted) {
-		LOG_ERR("Cannot sync to encrypted broadcast source");
-		return;
+		LOG_INF("Synced with encrypted BIS");
 	}
 
 	LOG_INF("Syncing to broadcast stream index %d", active_stream_index);
 
 	ret = bt_audio_broadcast_sink_sync(broadcast_sink, bis_index_bitfields[active_stream_index],
-					   audio_streams_p, NULL);
+					   audio_streams_p, bis_encrypted_key);
 	if (ret) {
 		LOG_WRN("Unable to sync to broadcast source, ret: %d", ret);
 		return;

@@ -143,17 +143,39 @@ static struct bt_audio_stream_ops stream_ops = { .sent = stream_sent_cb,
 						 .started = stream_started_cb,
 						 .stopped = stream_stopped_cb };
 
+static void public_broadcast_features_set(bool encrypted, bool standard_quality, bool high_quality,
+					  uint8_t *features)
+{
+	if (features == NULL) {
+		LOG_ERR("No pointer to features");
+		return;
+	}
+
+	if (encrypted) {
+		*features |= 0x01;
+	}
+
+	if (standard_quality) {
+		*features |= 0x02;
+	}
+
+	if (high_quality) {
+		*features |= 0x04;
+	}
+}
+
 static int adv_create(void)
 {
 	int ret;
 
 	/* Broadcast Audio Streaming Endpoint advertising data */
 	NET_BUF_SIMPLE_DEFINE(ad_buf, BT_UUID_SIZE_16 + BT_AUDIO_BROADCAST_ID_SIZE);
+	NET_BUF_SIMPLE_DEFINE(pba_buf, BT_UUID_SIZE_16 + 2);
 	NET_BUF_SIMPLE_DEFINE(base_buf, 128);
-	struct bt_data ext_ad[2];
+	struct bt_data ext_ad[3];
 	struct bt_data per_ad;
 	uint32_t broadcast_id;
-	char name[] = CONFIG_BT_DEVICE_NAME;
+	char name[] = "Nordic SQ PBA";
 
 	/* Create a non-connectable non-scannable advertising set */
 	ret = bt_le_ext_adv_create(BT_LE_EXT_ADV_NCONN_NAME, NULL, &adv);
@@ -178,6 +200,16 @@ static int adv_create(void)
 	net_buf_simple_add_le16(&ad_buf, BT_UUID_BROADCAST_AUDIO_VAL);
 	net_buf_simple_add_le24(&ad_buf, broadcast_id);
 
+	net_buf_simple_add_le16(&pba_buf, 0x1856);
+
+	uint8_t pba_features = 0;
+
+	public_broadcast_features_set(true, true, false, &pba_features);
+	net_buf_simple_add_u8(&pba_buf, pba_features);
+
+	// No metadata, set length to 0
+	net_buf_simple_add_u8(&pba_buf, 0x00);
+
 	ext_ad[0].type = BT_DATA_BROADCAST_NAME;
 	ext_ad[0].data = name;
 	ext_ad[0].data_len = strlen(name);
@@ -185,6 +217,10 @@ static int adv_create(void)
 	ext_ad[1].type = BT_DATA_SVC_DATA16;
 	ext_ad[1].data_len = ad_buf.len;
 	ext_ad[1].data = ad_buf.data;
+
+	ext_ad[2].type = BT_DATA_SVC_DATA16;
+	ext_ad[2].data_len = pba_buf.len;
+	ext_ad[2].data = pba_buf.data;
 
 	ret = bt_le_ext_adv_set_data(adv, ext_ad, ARRAY_SIZE(ext_ad), NULL, 0);
 	if (ret) {
