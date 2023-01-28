@@ -15,6 +15,7 @@
 #include "macros_common.h"
 #include "ctrl_events.h"
 #include "audio_datapath.h"
+#include "ble_audio_services.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(bis_gateway, CONFIG_BLE_LOG_LEVEL);
@@ -26,6 +27,11 @@ BUILD_ASSERT(CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT <= 2,
 #define STANDARD_QUALITY_16KHZ 16000
 #define STANDARD_QUALITY_24KHZ 24000
 #define HIGH_QUALITY_48KHZ 48000
+
+#define CIS_CONN_RETRY_TIMES 5
+#define CONNECTION_PARAMETERS                                                                      \
+	BT_LE_CONN_PARAM(CONFIG_BLE_ACL_CONN_INTERVAL, CONFIG_BLE_ACL_CONN_INTERVAL,               \
+			 CONFIG_BLE_ACL_SLAVE_LATENCY, CONFIG_BLE_ACL_SUP_TIMEOUT)
 
 /* For being able to dynamically define iso_tx_pools */
 #define NET_BUF_POOL_ITERATE(i, _)                                                                 \
@@ -50,6 +56,12 @@ static bool delete_broadcast_src;
 static uint32_t seq_num[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 
 static struct bt_le_ext_adv *adv;
+
+static uint8_t conn_num;
+
+static uint8_t bonded_num;
+
+static void ble_acl_start_scan(void);
 
 static bool is_iso_buffer_full(uint8_t idx)
 {
@@ -265,6 +277,205 @@ static int adv_create(void)
 	return 0;
 }
 
+static void bond_check(const struct bt_bond_info *info, void *user_data)
+{
+	char addr_buf[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(&info->addr, addr_buf, BT_ADDR_LE_STR_LEN);
+
+	LOG_DBG("Stored bonding found: %s", addr_buf);
+	bonded_num++;
+}
+
+static void bond_connect(const struct bt_bond_info *info, void *user_data)
+{
+	int ret;
+	const bt_addr_le_t *adv_addr = user_data;
+	struct bt_conn *conn;
+
+	if (!bt_addr_le_cmp(&info->addr, adv_addr)) {
+		LOG_DBG("Found bonded device");
+
+		ret = bt_le_scan_stop();
+		if (ret) {
+			LOG_WRN("Stop scan failed: %d", ret);
+		}
+
+		ret = bt_conn_le_create(adv_addr, BT_CONN_LE_CREATE_CONN, CONNECTION_PARAMETERS,
+					&conn);
+		if (ret) {
+			LOG_WRN("Create ACL connection failed: %d", ret);
+			ble_acl_start_scan();
+		}
+	}
+}
+
+static int device_found(uint8_t type, const uint8_t *data, uint8_t data_len,
+			const bt_addr_le_t *addr)
+{
+	int ret;
+	struct bt_conn *conn;
+
+	if ((data_len == DEVICE_NAME_PEER_LEN) &&
+	    (strncmp(DEVICE_NAME_PEER, data, DEVICE_NAME_PEER_LEN) == 0)) {
+		LOG_DBG("Device found");
+
+		ret = bt_le_scan_stop();
+		if (ret) {
+			LOG_WRN("Stop scan failed: %d", ret);
+		}
+
+		ret = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, CONNECTION_PARAMETERS, &conn);
+		if (ret) {
+			LOG_ERR("Could not init connection");
+			ble_acl_start_scan();
+			return ret;
+		}
+
+		return 0;
+	}
+
+	return -ENOENT;
+}
+
+/** @brief  Parse BLE advertisement package.
+ */
+static void ad_parse(struct net_buf_simple *p_ad, const bt_addr_le_t *addr)
+{
+	while (p_ad->len > 1) {
+		uint8_t len = net_buf_simple_pull_u8(p_ad);
+		uint8_t type;
+
+		/* Check for early termination */
+		if (len == 0) {
+			return;
+		}
+
+		if (len > p_ad->len) {
+			LOG_WRN("AD malformed");
+			return;
+		}
+
+		type = net_buf_simple_pull_u8(p_ad);
+
+		if (device_found(type, p_ad->data, len - 1, addr) == 0) {
+			return;
+		}
+
+		(void)net_buf_simple_pull(p_ad, len - 1);
+	}
+}
+
+static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+			    struct net_buf_simple *p_ad)
+{
+	/* Direct advertising has no payload, so no need to parse */
+	if (type == BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
+		if (bonded_num) {
+			bt_foreach_bond(BT_ID_DEFAULT, bond_connect, (void *)addr);
+		}
+		return;
+	} else if ((type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_EXT_ADV) &&
+		   (bonded_num < CONFIG_BT_MAX_PAIRED)) {
+		/* Note: May lead to connection creation */
+		ad_parse(p_ad, addr);
+	}
+}
+
+static void ble_acl_start_scan(void)
+{
+	int ret;
+
+	/* Reset number of bonds found */
+	bonded_num = 0;
+
+	bt_foreach_bond(BT_ID_DEFAULT, bond_check, NULL);
+
+	if (bonded_num >= CONFIG_BT_MAX_PAIRED) {
+		LOG_INF("All bonded slots filled, will not accept new devices");
+	}
+
+	ret = bt_le_scan_start(BT_LE_SCAN_PASSIVE, on_device_found);
+	if (ret && ret != -EALREADY) {
+		LOG_WRN("Scanning failed to start: %d", ret);
+		return;
+	}
+
+	LOG_INF("Scanning successfully started");
+}
+
+static void connected_cb(struct bt_conn *conn, uint8_t err)
+{
+	int ret;
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	if (err) {
+		LOG_ERR("ACL connection to %s failed, error %d", addr, err);
+
+		bt_conn_unref(conn);
+		ble_acl_start_scan();
+
+		return;
+	}
+
+	/* ACL connection established */
+	LOG_INF("Connected: %s", addr);
+
+	ret = bt_conn_set_security(conn, BT_SECURITY_L2);
+	if (ret) {
+		LOG_ERR("Failed to set security to L2: %d", ret);
+	}
+}
+
+static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	LOG_INF("Disconnected: %s (reason 0x%02x)", addr, reason);
+
+	bt_conn_unref(conn);
+	conn_num--;
+
+	LOG_WRN("Conn_num: %d", conn_num);
+
+	ble_acl_start_scan();
+}
+
+static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
+{
+	int ret;
+
+	if (err) {
+		LOG_ERR("Security failed: level %d err %d", level, err);
+		ret = bt_conn_disconnect(conn, err);
+		if (ret) {
+			LOG_ERR("Failed to disconnect %d", ret);
+		}
+	} else {
+		LOG_DBG("Security changed: level %d", level);
+	}
+
+	ret = ble_vcs_discover(conn, conn_num++);
+	if (ret) {
+		LOG_ERR("Could not do VCS discover");
+	}
+
+	if (conn_num > CONFIG_BT_MAX_CONN) {
+		conn_num = 0;
+	}
+}
+
+static struct bt_conn_cb conn_callbacks = {
+	.connected = connected_cb,
+	.disconnected = disconnected_cb,
+	.security_changed = security_changed_cb,
+
+};
+
 static int initialize(void)
 {
 	int ret;
@@ -331,6 +542,16 @@ static int initialize(void)
 		return ret;
 	}
 
+#if (CONFIG_BT_VCP_VOL_CTLR)
+	ret = ble_vcs_client_init();
+	if (ret) {
+		LOG_ERR("VCS client init failed");
+		return ret;
+	}
+#endif /* (CONFIG_BT_VCP_VOL_CTLR) */
+
+	bt_conn_cb_register(&conn_callbacks);
+
 	initialized = true;
 	return 0;
 }
@@ -348,14 +569,28 @@ int le_audio_config_get(uint32_t *bitrate, uint32_t *sampling_rate)
 
 int le_audio_volume_up(void)
 {
-	LOG_WRN("Not possible to increase volume on/from broadcast source");
-	return -ENXIO;
+	int ret;
+
+	ret = ble_vcs_volume_up();
+	if (ret) {
+		LOG_WRN("Failed to increase volume");
+		return ret;
+	}
+
+	return 0;
 }
 
 int le_audio_volume_down(void)
 {
-	LOG_WRN("Not possible to decrease volume on/from broadcast source");
-	return -ENXIO;
+	int ret;
+
+	ret = ble_vcs_volume_down();
+	if (ret) {
+		LOG_WRN("Failed to decrease volume");
+		return ret;
+	}
+
+	return 0;
 }
 
 int le_audio_volume_mute(void)
@@ -483,6 +718,8 @@ int le_audio_enable(le_audio_receive_cb recv_cb)
 	if (ret) {
 		return ret;
 	}
+
+	ble_acl_start_scan();
 
 	LOG_DBG("LE Audio enabled");
 

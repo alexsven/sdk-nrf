@@ -30,6 +30,7 @@ elseif (CONFIG_TRANSPORT_BIS)
 			${CMAKE_CURRENT_SOURCE_DIR}/le_audio_bis_headset.c)
 	# GATEWAY
 	elseif (CONFIG_AUDIO_DEV EQUAL 2)
+	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ble_audio_services.c)
 		target_sources(app PRIVATE
 			${CMAKE_CURRENT_SOURCE_DIR}/le_audio_bis_gateway.c)
 	else()

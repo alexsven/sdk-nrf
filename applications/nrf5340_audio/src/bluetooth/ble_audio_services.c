@@ -95,7 +95,7 @@ static void vcs_state_ctlr_cb_handler(struct bt_vcp_vol_ctlr *vcs, int err, uint
 				continue;
 			}
 			ERR_CHK_MSG(ret, "Failed to set VCS client to remote device properly");
-			LOG_DBG("Sync with other devices %d", i);
+			LOG_INF("Sync with other devices %d", i);
 			ret = bt_vcp_vol_ctlr_set_vol(vcs_client_peer[i], volume);
 			if (ret) {
 				LOG_DBG("Failed to sync volume to remote device %d, err = %d", i,
