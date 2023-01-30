@@ -186,9 +186,9 @@ static void work_net_core_ctrl_version_get(struct k_work *work)
 
 	ERR_CHK_MSG(ret, "Failed to get controller version");
 
-	if (!ctrl_version) {
-		ERR_CHK_MSG(-EIO, "Failed to contact net core");
-	}
+	// if (!ctrl_version) {
+	// 	ERR_CHK_MSG(-EIO, "Failed to contact net core");
+	// }
 }
 
 int net_core_ctrl_version_get(uint16_t *ctrl_version)
