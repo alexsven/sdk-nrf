@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include "sw_codec_select.h"
 
 #include <zephyr/kernel.h>

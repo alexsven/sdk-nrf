@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include "ctrl_events.h"
 
 #include <zephyr/kernel.h>

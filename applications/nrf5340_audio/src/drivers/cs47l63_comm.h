@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _CS47L63_COMM_H_
 #define _CS47L63_COMM_H_
 

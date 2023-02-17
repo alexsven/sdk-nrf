@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _BLE_AUDIO_SERVICES_H_
 #define _BLE_AUDIO_SERVICES_H_
 

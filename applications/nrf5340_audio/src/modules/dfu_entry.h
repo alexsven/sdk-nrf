@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _DFU_ENTRY_H_
 #define _DFU_ENTRY_H_
 

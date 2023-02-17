@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _CTRL_EVENTS_H_
 #define _CTRL_EVENTS_H_
 

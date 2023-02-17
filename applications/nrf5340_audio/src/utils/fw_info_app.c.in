@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+ /** @file
+ */
+
 #include "fw_info_app.h"
 
 #include <zephyr/kernel.h>

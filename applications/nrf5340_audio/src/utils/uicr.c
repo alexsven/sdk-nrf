@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include "uicr.h"
 #include <stdint.h>
 #include <errno.h>

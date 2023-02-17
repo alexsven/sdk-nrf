@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _BOARD_VERSION_H_
 #define _BOARD_VERSION_H_
 

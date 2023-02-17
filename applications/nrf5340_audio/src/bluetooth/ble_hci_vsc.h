@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _BLE_HCI_VSC_H_
 #define _BLE_HCI_VSC_H_
 

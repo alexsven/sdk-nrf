@@ -4,6 +4,9 @@
  *  SPDX-License-Identifier: LicenseRef-PCFT
  */
 
+/** @file
+ */
+
 #ifndef _AUDIO_I2S_H_
 #define _AUDIO_I2S_H_
 

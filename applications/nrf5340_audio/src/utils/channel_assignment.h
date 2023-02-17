@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _CHANNEL_ASSIGNMENT_H_
 #define _CHANNEL_ASSIGNMENT_H_
 

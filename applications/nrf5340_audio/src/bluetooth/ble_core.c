@@ -3,6 +3,9 @@
  *
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
+
+/** @file
+ */
 #include "ble_core.h"
 
 #include <zephyr/kernel.h>

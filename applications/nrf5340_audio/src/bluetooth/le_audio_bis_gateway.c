@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include "le_audio.h"
 
 #include <zephyr/bluetooth/bluetooth.h>

@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 /* Override compiler definition to use size-bounded string copying and concatenation function */
 #define _BSD_SOURCE
 #include "string.h"

@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/gpio.h>
 #include "ble_hci_vsc.h"

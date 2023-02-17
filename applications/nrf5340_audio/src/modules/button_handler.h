@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _BUTTON_HANDLER_H_
 #define _BUTTON_HANDLER_H_
 

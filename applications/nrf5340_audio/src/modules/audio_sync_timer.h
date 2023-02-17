@@ -4,6 +4,9 @@
  *  SPDX-License-Identifier: LicenseRef-PCFT
  */
 
+/** @file
+ */
+
 #ifndef _AUDIO_SYNC_TIMER_H_
 #define _AUDIO_SYNC_TIMER_H_
 

@@ -4,6 +4,9 @@
  *  SPDX-License-Identifier: LicenseRef-PCFT
  */
 
+/** @file
+ */
+
 #include "audio_i2s.h"
 
 #include <zephyr/kernel.h>

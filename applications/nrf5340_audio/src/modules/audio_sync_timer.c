@@ -4,6 +4,9 @@
  *  SPDX-License-Identifier: LicenseRef-PCFT
  */
 
+/** @file
+ */
+
 #include "audio_sync_timer.h"
 
 #include <zephyr/kernel.h>

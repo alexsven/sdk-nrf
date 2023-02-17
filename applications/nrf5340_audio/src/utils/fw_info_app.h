@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _FW_INFO_APP_H_
 #define _FW_INFO_APP_H_
 

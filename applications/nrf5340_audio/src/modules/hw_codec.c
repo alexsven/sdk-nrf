@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #include "hw_codec.h"
 
 #include <zephyr/kernel.h>
@@ -109,7 +112,8 @@ int hw_codec_volume_adjust(int8_t adjustment_db)
 
 	if (adjustment_db == 0) {
 		ret = cs47l63_write_reg(&cs47l63_driver, CS47L63_OUT1L_VOLUME_1,
-				(prev_volume_reg_val | CS47L63_OUT_VU) & ~CS47L63_OUT1L_MUTE);
+					(prev_volume_reg_val | CS47L63_OUT_VU) &
+						~CS47L63_OUT1L_MUTE);
 		return ret;
 	}
 
@@ -134,11 +138,11 @@ int hw_codec_volume_adjust(int8_t adjustment_db)
 	} else if (new_volume_reg_val > MAX_VOLUME_REG_VAL) {
 		LOG_WRN("Volume at MAX (0dB)");
 		new_volume_reg_val = MAX_VOLUME_REG_VAL;
-
 	}
 
 	ret = cs47l63_write_reg(&cs47l63_driver, CS47L63_OUT1L_VOLUME_1,
-		((uint32_t)new_volume_reg_val | CS47L63_OUT_VU) & ~CS47L63_OUT1L_MUTE);
+				((uint32_t)new_volume_reg_val | CS47L63_OUT_VU) &
+					~CS47L63_OUT1L_MUTE);
 
 	if (ret) {
 		return ret;

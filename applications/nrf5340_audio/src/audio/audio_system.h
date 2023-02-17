@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+/** @file
+ */
+
 #ifndef _AUDIO_SYSTEM_H_
 #define _AUDIO_SYSTEM_H_
 
