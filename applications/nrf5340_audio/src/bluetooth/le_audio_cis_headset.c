@@ -24,7 +24,7 @@
 #include "channel_assignment.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cis_headset, CONFIG_BLE_LOG_LEVEL);
+LOG_MODULE_REGISTER(cis_headset, 4); /* CONFIG_BLE_LOG_LEVEL); */
 
 #define CHANNEL_COUNT_1 BIT(0)
 #define BLE_ISO_LATENCY_MS 10
@@ -109,9 +109,16 @@ static enum bt_audio_dir caps_dirs[] = {
 #endif
 };
 
+/* Ensure the preferred presentaion given are maximum >= minimum  */
+BUILD_ASSERT(CONFIG_BT_AUDIO_PREFERRED_MAX_PRES_DLY_US >= CONFIG_BT_AUDIO_PREFERRED_MIN_PRES_DLY_US,
+	     "The maximum preferred presentation delay is less than the minimum.");
+
 static const struct bt_codec_qos_pref qos_pref =
 	BT_CODEC_QOS_PREF(true, BT_GAP_LE_PHY_2M, BLE_ISO_RETRANSMITS, BLE_ISO_LATENCY_MS,
-			  MIN_PRES_DLY_US, MAX_PRES_DLY_US, MIN_PRES_DLY_US, MAX_PRES_DLY_US);
+			  CONFIG_AUDIO_MIN_PRES_DLY_US, CONFIG_AUDIO_MAX_PRES_DLY_US,
+			  CONFIG_BT_AUDIO_PREFERRED_MIN_PRES_DLY_US,
+			  CONFIG_BT_AUDIO_PREFERRED_MAX_PRES_DLY_US);
+
 /* clang-format off */
 static struct bt_pacs_cap caps[] = {
 				{
@@ -269,6 +276,8 @@ static int lc3_config_cb(struct bt_conn *conn, const struct bt_audio_ep *ep, enu
 {
 	int ret;
 
+	LOG_DBG("LC3 configure call-back");
+
 	for (int i = 0; i < ARRAY_SIZE(audio_streams); i++) {
 		struct bt_audio_stream *audio_stream = &audio_streams[i];
 
@@ -331,6 +340,9 @@ static int lc3_qos_cb(struct bt_audio_stream *stream, const struct bt_codec_qos 
 	LOG_DBG("QoS: stream %p qos %p", (void *)stream, (void *)qos);
 	LOG_INF("Presentation delay %d us is set by initiator", qos->pd);
 	ret = audio_datapath_pres_delay_us_set(qos->pd);
+	if (ret) {
+		LOG_WRN("Failed to set QoS for stream %p", stream);
+	}
 
 	return ret;
 }
@@ -451,19 +463,21 @@ static void stream_recv_cb(struct bt_audio_stream *stream, const struct bt_iso_r
 
 static void stream_start_cb(struct bt_audio_stream *stream)
 {
-	LOG_INF("Stream started");
+	LOG_INF("Stream %p started", stream);
 }
 
 static void stream_stop_cb(struct bt_audio_stream *stream)
 {
 	int ret;
 
-	LOG_INF("Stream stopped");
+	LOG_DBG("Stream %p stopping", stream);
 #if CONFIG_STREAM_BIDIRECTIONAL
 	atomic_clear(&iso_tx_pool_alloc);
 #endif /* CONFIG_STREAM_BIDIRECTIONAL */
 	ret = ctrl_events_le_audio_event_send(LE_AUDIO_EVT_NOT_STREAMING);
 	ERR_CHK(ret);
+
+	LOG_INF("Stream %p stopped", stream);
 }
 
 static void connected_cb(struct bt_conn *conn, uint8_t err)

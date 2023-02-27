@@ -267,6 +267,33 @@ source "subsys/logging/Kconfig.template.log_config"
 endmenu # Log levels
 
 #----------------------------------------------------------------------------#
+config AUDIO_MIN_PRES_DLY_US
+	int "The minimum presentation delay"
+	default 4000
+	help
+	  The minimum presentation delay determined by the audio system processing
+	  and the minimum buffering.
+
+config AUDIO_MAX_PRES_DLY_US
+	int "The maximum presentation delay"
+	default 60000
+	help
+	  The maximum presentation delay in micro seconds.
+
+#----------------------------------------------------------------------------#
+config AUDIO_MIN_PRES_DLY_US
+	int "The minimum presentation delay"
+	default 4000
+	help
+	  The minimum presentation delay in micro seconds.
+
+config AUDIO_MAX_PRES_DLY_US
+	int "The maximum presentation delay"
+	default 60000
+	help
+	  The maximum presentation delay in micro seconds.
+
+#----------------------------------------------------------------------------#
 menu "Thread priorities"
 
 config ENCODER_THREAD_PRIO

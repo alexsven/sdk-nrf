@@ -369,6 +369,61 @@ config BT_AUDIO_PACKING_INTERLEAVED
 	help
 	  ISO channels can either be interleaved or sequentially packed; sequential is the default one.
 
+config BT_AUDIO_PREFERRED_MIN_PRES_DLY_US
+	int "The preferred minimum presentation delay"
+	range AUDIO_MIN_PRES_DLY_US AUDIO_MAX_PRES_DLY_US
+	default 10000
+	help
+	  The preferred minimum presentation delay in micro seconds. This can not
+	  be less than the absolute minimum presentation delay.
+
+config BT_AUDIO_PREFERRED_MAX_PRES_DLY_US
+	int "The preferred maximum presentation delay"
+	range AUDIO_MIN_PRES_DLY_US AUDIO_MAX_PRES_DLY_US
+	default 40000
+	help
+	  The preferred maximum presentation delay in micro seconds. This can not
+	  be less than the absolute maximum presentation delay.
+
+choice	BT_AUDIO_PRES_DLY_SRCH
+	prompt "Default search mode for the presentation delay"
+	default BT_AUDIO_PRES_DELAY_SRCH_PREF_MIN
+	help
+	  Set the default search mode for the presentation delay.
+
+config BT_AUDIO_PRES_DELAY_SRCH_MIN
+	bool "Largest minimum delay over all headsets"
+	help
+	  Search for the largest minimum delay over all headsets.
+
+config BT_AUDIO_PRES_DELAY_SRCH_MAX
+	bool "Smallest maximum delay over all headsets"
+	help
+	  Search for the smallest maximum delay over all headsets
+
+config BT_AUDIO_PRES_DELAY_SRCH_PREF_MIN
+	bool "Search for the largest minimm preferred delay over all headsets"
+
+config BT_AUDIO_PRES_DELAY_SRCH_PREF_MAX
+	bool "Largest maximum preferred delay over all headsets"
+	help
+	  Search for the largest maximum preferred delay over all headsets.
+
+config BT_AUDIO_PRES_DELAY_SRCH_LOCAL
+	bool "Use the local delay"
+	help
+	  Use the local defined delay if within AUDIO_MIN_PRES_DLY_US
+	  and AUDIO_MAX_PRES_DLY_US range.
+endchoice
+
+config BT_AUDIO_PRES_DLY_SRCH_MODE
+	int
+	default 0 if BT_AUDIO_PRES_DELAY_SRCH_MIN
+	default 1 if BT_AUDIO_PRES_DELAY_SRCH_MAX
+	default 2 if BT_AUDIO_PRES_DELAY_SRCH_PREF_MIN
+	default 3 if BT_AUDIO_PRES_DELAY_SRCH_PREF_MAX
+	default 4 if BT_AUDIO_PRES_DELAY_SRCH_LOCAL
+
 config AURACAST
 	bool "Enable Auracast"
 	depends on TRANSPORT_BIS
@@ -378,11 +433,15 @@ config AURACAST
 
 menu "QoS"
 
-config BT_AUDIO_PRESENTATION_DELAY_US
-	int "Presentation delay"
+config BT_AUDIO_LOCAL_PRESENTATION_DELAY_US
+	int "Local Presentation delay"
+	range AUDIO_MIN_PRES_DLY_US AUDIO_MAX_PRES_DLY_US
 	default 10000
 	help
-	  Presentation delay for the ISO link.
+	  The local requested presentation delay for the ISO link. Only used
+	  if the BT_AUDIO_PRES_DELAY_SRCH_LOCAL is selected. Must be in the
+	  range of the presentation delay given by the minimum and maximum
+	  for the hardware.
 
 config BT_AUDIO_MAX_TRANSPORT_LATENCY_MS
 	int "Max transport latency"
