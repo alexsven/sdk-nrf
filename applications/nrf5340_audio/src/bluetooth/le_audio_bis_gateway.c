@@ -191,6 +191,8 @@ static int adv_create(void)
 {
 	int ret;
 
+#define BT_LE_PER_ADV_AURACAST BT_LE_PER_ADV_PARAM(0x20, 0x20, BT_LE_PER_ADV_OPT_NONE)
+
 	/* Broadcast Audio Streaming Endpoint advertising data */
 	NET_BUF_SIMPLE_DEFINE(ad_buf, BT_UUID_SIZE_16 + BT_AUDIO_BROADCAST_ID_SIZE);
 	/* Buffer for Public Broadcast Announcement */
@@ -215,7 +217,7 @@ static int adv_create(void)
 	}
 
 	/* Set periodic advertising parameters */
-	ret = bt_le_per_adv_set_param(adv, BT_LE_PER_ADV_DEFAULT);
+	ret = bt_le_per_adv_set_param(adv, BT_LE_PER_ADV_AURACAST);
 	if (ret) {
 		LOG_ERR("Failed to set periodic advertising parameters (ret %d)", ret);
 		return ret;
@@ -290,7 +292,6 @@ static void bis_delayed_start_process(struct k_work *work)
 		return;
 	}
 
-
 	/* Start extended advertising */
 	ret = bt_le_ext_adv_start(adv, BT_LE_EXT_ADV_START_DEFAULT);
 	if (ret) {
@@ -308,7 +309,6 @@ static void bis_delayed_start_process(struct k_work *work)
 	ret = bt_audio_broadcast_source_start(broadcast_source, adv);
 
 	LOG_DBG("LE Audio enabled");
-
 }
 
 static bool ble_acl_gateway_all_links_connected(void)
@@ -417,8 +417,7 @@ static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 			bt_foreach_bond(BT_ID_DEFAULT, bond_connect, (void *)addr);
 		}
 		return;
-	} else
-	if ((type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_EXT_ADV) &&
+	} else if ((type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_EXT_ADV) &&
 		   (bonded_num < CONFIG_BT_MAX_PAIRED)) {
 		/* Note: May lead to connection creation */
 		ad_parse(p_ad, addr);
@@ -475,7 +474,7 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 		ble_acl_start_scan();
 	}
 
-	k_work_submit(&bis_start);
+	/* k_work_submit(&bis_start); */
 
 	/* ACL connection established */
 	LOG_INF("Connected: %s", addr);
@@ -561,7 +560,6 @@ static int initialize(void)
 	struct bt_audio_broadcast_source_subgroup_param
 		subgroup_params[CONFIG_BT_AUDIO_BROADCAST_SRC_SUBGROUP_COUNT];
 	struct bt_audio_broadcast_source_create_param create_param;
-
 
 	(void)memset(audio_streams, 0, sizeof(audio_streams));
 
@@ -740,6 +738,8 @@ int le_audio_enable(le_audio_receive_cb recv_cb)
 	bt_conn_cb_register(&conn_callbacks);
 
 	k_work_init(&bis_start, bis_delayed_start_process);
+
+	bis_delayed_start_process(NULL);
 
 	ble_acl_start_scan();
 
