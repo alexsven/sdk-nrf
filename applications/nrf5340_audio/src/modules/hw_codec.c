@@ -31,6 +31,9 @@ static cs47l63_t cs47l63_driver;
 static const struct gpio_dt_spec hw_codec_sel =
 	GPIO_DT_SPEC_GET(DT_NODELABEL(hw_codec_sel_out), gpios);
 
+static const struct gpio_dt_spec hw_codec_reset =
+	GPIO_DT_SPEC_GET(DT_NODELABEL(hw_codec_reset_out), gpios);
+
 /**@brief Write to multiple registers in CS47L63
  */
 static int cs47l63_comm_reg_conf_write(const uint32_t config[][2], uint32_t num_of_regs)
@@ -76,6 +79,17 @@ static int hw_codec_on_board_set(void)
 	/* Allow for switches to flip when selecting on board hw_codec */
 	k_msleep(HW_CODEC_SELECT_DELAY_MS);
 
+	/* Ensure CS47L63 HW codec reset pin is not asserted */
+	if (!device_is_ready(hw_codec_reset.port)) {
+		LOG_ERR("GPIO is not ready!");
+		return -ENODEV;
+	}
+
+	ret = gpio_pin_configure_dt(&hw_codec_reset, GPIO_OUTPUT_INACTIVE);
+	if (ret) {
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -109,7 +123,8 @@ int hw_codec_volume_adjust(int8_t adjustment_db)
 
 	if (adjustment_db == 0) {
 		ret = cs47l63_write_reg(&cs47l63_driver, CS47L63_OUT1L_VOLUME_1,
-				(prev_volume_reg_val | CS47L63_OUT_VU) & ~CS47L63_OUT1L_MUTE);
+					(prev_volume_reg_val | CS47L63_OUT_VU) &
+						~CS47L63_OUT1L_MUTE);
 		return ret;
 	}
 
@@ -134,11 +149,11 @@ int hw_codec_volume_adjust(int8_t adjustment_db)
 	} else if (new_volume_reg_val > MAX_VOLUME_REG_VAL) {
 		LOG_WRN("Volume at MAX (0dB)");
 		new_volume_reg_val = MAX_VOLUME_REG_VAL;
-
 	}
 
 	ret = cs47l63_write_reg(&cs47l63_driver, CS47L63_OUT1L_VOLUME_1,
-		((uint32_t)new_volume_reg_val | CS47L63_OUT_VU) & ~CS47L63_OUT1L_MUTE);
+				((uint32_t)new_volume_reg_val | CS47L63_OUT_VU) &
+					~CS47L63_OUT1L_MUTE);
 
 	if (ret) {
 		return ret;
