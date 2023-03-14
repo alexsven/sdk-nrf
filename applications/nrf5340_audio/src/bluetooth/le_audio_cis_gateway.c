@@ -403,7 +403,7 @@ static void stream_qos_set_cb(struct bt_audio_stream *stream)
 
 	LOG_DBG("Stream %p QoS set to %d", stream, stream->qos->pd);
 
-	if (playing_state) {
+	if (playing_state || stream->user_data != NULL) {
 		ret = bt_audio_stream_enable(stream, lc3_preset_sink.codec.meta,
 					     lc3_preset_sink.codec.meta_count);
 		if (ret) {
