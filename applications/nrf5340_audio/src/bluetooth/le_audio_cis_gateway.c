@@ -20,7 +20,7 @@
 #include "channel_assignment.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cis_gateway, 4); /* CONFIG_BLE_LOG_LEVEL); */
+LOG_MODULE_REGISTER(cis_gateway, CONFIG_BLE_LOG_LEVEL);
 
 #define HCI_ISO_BUF_ALLOC_PER_CHAN 2
 #define CIS_CONN_RETRY_TIMES 5
@@ -66,6 +66,7 @@ struct le_audio_headset {
 	struct k_work_delayable stream_start_sink_work;
 	struct k_work_delayable stream_start_source_work;
 	bool qos_reconfigure;
+	uint32_t reconfigure_pd;
 };
 
 struct temp_codec_cap_storage {
@@ -252,20 +253,21 @@ static int update_sink_stream_qos(struct le_audio_headset *headset, uint32_t pre
 {
 	int ret;
 
-	headset->sink_stream.user_data = (void *)NULL;
-	headset->qos_reconfigure = false;
-
-	if (headset->sink_ep->qos.pd != pres_delay_us) {
+	if (headset->sink_stream.qos->pd != pres_delay_us) {
 		headset->sink_stream.qos->pd = pres_delay_us;
 
 		if (playing_state) {
 			LOG_DBG("Update streaming %s headset, connection %p, stream %p",
 				headset->ch_name, &headset->headset_conn, &headset->sink_stream);
 
-			headset->sink_stream.user_data = (void *)headset;
 			headset->qos_reconfigure = true;
+			headset->reconfigure_pd = pres_delay_us;
 
-			ble_mcs_play_pause(headset->headset_conn);
+			ret = bt_audio_stream_disable(&headset->sink_stream);
+			if (ret) {
+				LOG_ERR("Unable to disable stream: %d", ret);
+				return ret;
+			}
 		} else {
 			LOG_DBG("Reset %s headset, connection %p, stream %p", headset->ch_name,
 				&headset->headset_conn, &headset->sink_stream);
@@ -274,6 +276,7 @@ static int update_sink_stream_qos(struct le_audio_headset *headset, uint32_t pre
 			if (ret) {
 				LOG_ERR("QoS not set for stream %p: %d", &headset->sink_stream,
 					ret);
+				return ret;
 			}
 		}
 	}
@@ -362,9 +365,6 @@ static void stream_configured_cb(struct bt_audio_stream *stream,
 		LOG_ERR("Cannot get a valid presentation delay");
 	}
 
-	LOG_DBG("New presentation delay: %d us", new_pd_us);
-	lc3_preset_sink.qos.pd = new_pd_us;
-
 #if CONFIG_STREAM_BIDIRECTIONAL
 	if (ep_state_check(headsets[channel_index].sink_stream.ep,
 			   BT_AUDIO_EP_STATE_CODEC_CONFIGURED) &&
@@ -400,16 +400,29 @@ static void stream_configured_cb(struct bt_audio_stream *stream,
 static void stream_qos_set_cb(struct bt_audio_stream *stream)
 {
 	int ret;
+	uint8_t channel_index;
 
-	LOG_DBG("Stream %p QoS set to %d", stream, stream->qos->pd);
+	ret = channel_index_get(stream->conn, &channel_index);
 
-	if (playing_state || stream->user_data != NULL) {
-		ret = bt_audio_stream_enable(stream, lc3_preset_sink.codec.meta,
-					     lc3_preset_sink.codec.meta_count);
-		if (ret) {
-			LOG_ERR("Unable to enable stream: %d", ret);
+	if (headsets[channel_index].qos_reconfigure) {
+		LOG_DBG("Reconfiguring: %s to PD: %d", headsets[channel_index].ch_name,
+			lc3_preset_sink.qos.pd);
+
+		headsets[channel_index].qos_reconfigure = false;
+		headsets[channel_index].sink_stream.qos->pd =
+			headsets[channel_index].reconfigure_pd;
+		bt_audio_stream_qos(headsets[channel_index].headset_conn, unicast_group);
+	} else {
+		LOG_DBG("Stream %p QoS set to %d", stream, stream->qos->pd);
+
+		if (playing_state) {
+			ret = bt_audio_stream_enable(stream, lc3_preset_sink.codec.meta,
+						     lc3_preset_sink.codec.meta_count);
+			if (ret) {
+				LOG_ERR("Unable to enable stream: %d", ret);
+			}
+			LOG_INF("Enable stream %p", stream);
 		}
-		LOG_INF("Enable stream %p", stream);
 	}
 }
 
@@ -512,23 +525,6 @@ static void stream_stopped_cb(struct bt_audio_stream *stream)
 	    !ep_state_check(headsets[AUDIO_CH_R].sink_stream.ep, BT_AUDIO_EP_STATE_STREAMING)) {
 		ret = ctrl_events_le_audio_event_send(LE_AUDIO_EVT_NOT_STREAMING);
 		ERR_CHK(ret);
-	}
-
-	if (stream->user_data != NULL) {
-		struct le_audio_headset *headset = (struct le_audio_headset *)stream->user_data;
-
-		LOG_INF("User data found in stop callback");
-
-		if (headset->qos_reconfigure) {
-			ret = bt_audio_stream_qos(stream->conn, unicast_group);
-			if (ret) {
-				LOG_ERR("QoS not set for stream %p: %d", stream, ret);
-			}
-
-			LOG_DBG("Update QoS for stream %p: %d us", stream, stream->qos->pd);
-		}
-		headset->qos_reconfigure = false;
-		stream->user_data = NULL;
 	}
 }
 

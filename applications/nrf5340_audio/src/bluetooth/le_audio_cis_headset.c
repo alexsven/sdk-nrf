@@ -24,7 +24,7 @@
 #include "channel_assignment.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cis_headset, 4); /* CONFIG_BLE_LOG_LEVEL); */
+LOG_MODULE_REGISTER(cis_headset, CONFIG_BLE_LOG_LEVEL);
 
 #define CHANNEL_COUNT_1 BIT(0)
 #define BLE_ISO_LATENCY_MS 10

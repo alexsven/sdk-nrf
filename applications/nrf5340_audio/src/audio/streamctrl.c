@@ -27,7 +27,7 @@
 #include "audio_sync_timer.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(streamctrl, 4); /* CONFIG_STREAMCTRL_LOG_LEVEL); */
+LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
 
 struct ble_iso_data {
 	uint8_t data[CONFIG_BT_ISO_RX_MTU];
@@ -123,13 +123,13 @@ static void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_si
 	struct ble_iso_data *iso_received = NULL;
 
 #if (CONFIG_AUDIO_DEV == GATEWAY)
+	static uint32_t packet_count_r;
+
 	switch (channel_index) {
 	case AUDIO_CH_L:
 		/* Proceed */
 		break;
 	case AUDIO_CH_R:
-		static uint32_t packet_count_r;
-
 		packet_count_r++;
 		if ((packet_count_r % 1000) == 0) {
 			LOG_DBG("Packets received from right channel: %d", packet_count_r);

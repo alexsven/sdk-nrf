@@ -114,26 +114,6 @@ int ble_mcs_discover(struct bt_conn *conn);
 int ble_mcs_state_update(struct bt_conn *conn);
 
 /**
- * @brief  Send play command to the media player if in pause state.
- *
- * @param  conn  Pointer to the active connection, only valid for client.
- *               Shall be NULL if called from server.
- *
- * @return 0 for success, error otherwise.
- */
-int ble_mcs_play(struct bt_conn *conn);
-
-/**
- * @brief  Send pause command to the media player if in play state.
- *
- * @param  conn  Pointer to the active connection, only valid for client.
- *               Shall be NULL if called from server.
- *
- * @return 0 for success, error otherwise.
- */
-int ble_mcs_pause(struct bt_conn *conn);
-
-/**
  * @brief  Send play/pause command to the media player,
  *         depending on the current state.
  *

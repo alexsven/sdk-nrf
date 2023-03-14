@@ -479,8 +479,7 @@ int ble_mcs_discover(struct bt_conn *conn)
 	int ret;
 	uint8_t idx = bt_conn_index(conn);
 
-	if (mcp_mcs_disc_status[idx] == FINISHED ||
-	    mcp_mcs_disc_status[idx] == IN_PROGRESS) {
+	if (mcp_mcs_disc_status[idx] == FINISHED || mcp_mcs_disc_status[idx] == IN_PROGRESS) {
 		return -EALREADY;
 	}
 
@@ -514,62 +513,6 @@ int ble_mcs_state_update(struct bt_conn *conn)
 	LOG_ERR("MCC not enabled");
 	return -ECANCELED;
 #endif /* CONFIG_BT_MCC */
-}
-
-int ble_mcs_play(struct bt_conn *conn)
-{
-	int ret = 0;
-	struct mpl_cmd cmd;
-
-	if (media_player_state == BT_MCS_MEDIA_STATE_PAUSED) {
-		cmd.opcode = BT_MCS_OPC_PLAY;
-	} else {
-		LOG_ERR("Invalid state: %d", media_player_state);
-		return -ECANCELED;
-	}
-
-	cmd.use_param = false;
-
-#if (CONFIG_BT_MCS)
-	ret = media_proxy_ctrl_send_command(local_player, &cmd);
-#elif CONFIG_BT_MCC
-	ret = bt_mcc_send_cmd(conn, &cmd);
-#endif /* (CONFIG_BT_MCS) */
-
-	if (ret) {
-		LOG_WRN("Failed to send play command: %d", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-int ble_mcs_pause(struct bt_conn *conn)
-{
-	int ret = 0;
-	struct mpl_cmd cmd;
-
-	if (media_player_state == BT_MCS_MEDIA_STATE_PLAYING) {
-		cmd.opcode = BT_MCS_OPC_PAUSE;
-	} else {
-		LOG_ERR("Invalid state: %d", media_player_state);
-		return -ECANCELED;
-	}
-
-	cmd.use_param = false;
-
-#if (CONFIG_BT_MCS)
-	ret = media_proxy_ctrl_send_command(local_player, &cmd);
-#elif CONFIG_BT_MCC
-	ret = bt_mcc_send_cmd(conn, &cmd);
-#endif /* (CONFIG_BT_MCS) */
-
-	if (ret) {
-		LOG_WRN("Failed to send pause command: %d", ret);
-		return ret;
-	}
-
-	return 0;
 }
 
 int ble_mcs_play_pause(struct bt_conn *conn)
