@@ -23,7 +23,7 @@
 #include "channel_assignment.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cis_gateway, CONFIG_BLE_LOG_LEVEL);
+LOG_MODULE_REGISTER(cis_gateway, 4);
 
 ZBUS_CHAN_DEFINE(le_audio_chan, struct le_audio_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
@@ -207,13 +207,14 @@ static int headset_pres_delay_find(uint8_t index, uint32_t *pres_dly_us)
 static bool ep_state_check(struct bt_bap_ep *ep, enum bt_bap_ep_state state)
 {
 	if (ep == NULL) {
-		LOG_DBG("Endpoint is NULL");
+		// LOG_DBG("Endpoint is NULL");
 		return false;
 	}
 
 	if (ep->status.state == state) {
 		return true;
 	}
+	LOG_WRN("State: %d", ep->status.state);
 
 	return false;
 }
@@ -317,11 +318,29 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 static void available_contexts_cb(struct bt_conn *conn, enum bt_audio_context snk_ctx,
 				  enum bt_audio_context src_ctx)
 {
+	int ret;
 	char addr[BT_ADDR_LE_STR_LEN];
+	uint8_t channel_index = 0;
 
 	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	LOG_DBG("conn: %s, snk ctx %d src ctx %d\n", addr, snk_ctx, src_ctx);
+	ret = channel_index_get(conn, &channel_index);
+	if (ret) {
+		LOG_ERR("Channel index not found");
+	}
+
+	LOG_WRN("conn: %s, snk ctx %d src ctx %d\n", addr, snk_ctx, src_ctx);
+
+	if ((snk_ctx & BT_AUDIO_CONTEXT_TYPE_MEDIA)) {
+		LOG_WRN("Reconfigure stream");
+		ep_state_check(headsets[channel_index].sink_stream.ep,
+			       BT_BAP_EP_STATE_CODEC_CONFIGURED);
+		ret = bt_bap_stream_config(conn, &headsets[channel_index].sink_stream,
+					   headsets[channel_index].sink_ep, &lc3_preset_sink.codec);
+		if (ret) {
+			LOG_ERR("Could not configure sink stream");
+		}
+	}
 }
 
 static const struct bt_bap_unicast_client_cb unicast_client_cbs = {
@@ -548,6 +567,7 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 static void stream_released_cb(struct bt_bap_stream *stream)
 {
 	LOG_DBG("Audio Stream %p released", (void *)stream);
+	ep_state_check(headsets[AUDIO_CH_L].sink_stream.ep, BT_BAP_EP_STATE_ENABLING);
 
 	/* Check if the other stream is streaming, send event if not */
 	if (stream == &headsets[AUDIO_CH_L].sink_stream) {

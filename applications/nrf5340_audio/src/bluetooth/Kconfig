@@ -357,7 +357,7 @@ endchoice
 config BT_AUDIO_BROADCAST_NAME
 	string "Broadcast name"
 	depends on TRANSPORT_BIS
-	default "NRF5340_BROADCASTER"
+	default "Dave's Laptop"
 	help
 	  Name of the broadcast; not the same as BT_DEVICE_NAME.
 
@@ -385,7 +385,7 @@ config BT_AUDIO_BROADCAST_ENCRYPTED
 config BT_AUDIO_BROADCAST_ENCRYPTION_KEY
 	string "Broadcast encryption key"
 	depends on TRANSPORT_BIS
-	default "NRF5340_BIS_DEMO"
+	default "1234"
 	help
 	  Key to use for encryption and decryption; max 16 characters.
 	  Encryption keys larger than 16 characters will be cropped to 16.
