@@ -61,10 +61,26 @@ static uint8_t csip_rsi[BT_CSIP_RSI_SIZE];
 static le_audio_receive_cb receive_cb;
 static le_audio_timestamp_cb timestamp_cb;
 
+#define AVAILABLE_SINK_CONTEXT	 (BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED | BT_AUDIO_CONTEXT_TYPE_MEDIA)
+#define AVAILABLE_SOURCE_CONTEXT (BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED | BT_AUDIO_CONTEXT_TYPE_MEDIA)
+
+static uint8_t unicast_server_addata[] = {
+	BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),	/* ASCS UUID */
+	BT_AUDIO_UNICAST_ANNOUNCEMENT_TARGETED, /* Target Announcement */
+	(((AVAILABLE_SINK_CONTEXT) >> 0) & 0xFF),
+	(((AVAILABLE_SINK_CONTEXT) >> 8) & 0xFF),
+#if (CONFIG_BT_AUDIO_TX)
+	(((AVAILABLE_SOURCE_CONTEXT) >> 0) & 0xFF),
+	(((AVAILABLE_SOURCE_CONTEXT) >> 8) & 0xFF),
+#endif /* (CONFIG_BT_AUDIO_TX) */
+	0x00, /* Metadata length */
+};
+
 static const struct bt_data ad_peer[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL)),
-	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_PACS_VAL)),
+	BT_DATA_BYTES(BT_DATA_UUID16_SOME, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),
+		      BT_UUID_16_ENCODE(BT_UUID_PACS_VAL)),
+	BT_DATA(BT_DATA_SVC_DATA16, unicast_server_addata, ARRAY_SIZE(unicast_server_addata)),
 	BT_CSIP_DATA_RSI(csip_rsi)};
 
 static void le_audio_event_publish(enum le_audio_evt_type event)
@@ -101,7 +117,7 @@ struct bt_csip_set_member_register_param csip_param = {
 	.lockable = true,
 #if !CONFIG_BT_CSIP_SET_MEMBER_TEST_SAMPLE_DATA
 	/* CSIP SIRK for demo is used, must be changed before production */
-	.set_sirk = {'N', 'R', 'F', '5', '3', '4', '0', '_', 'T', 'W', 'S', '_', 'D', 'E', 'M',
+	.set_sirk = {'N', 'R', 'F', '5', '3', '4', '0', '_', 'T', 'W', 'O', '_', 'D', 'E', 'M',
 		     'O'},
 #else
 #warning "CSIP test sample data is used, must be changed before production"
@@ -112,7 +128,8 @@ struct bt_csip_set_member_register_param csip_param = {
 static struct bt_codec lc3_codec = BT_CODEC_LC3(
 	BT_AUDIO_CODEC_CAPABILIY_FREQ, (BT_CODEC_LC3_DURATION_10 | BT_CODEC_LC3_DURATION_PREFER_10),
 	CHANNEL_COUNT_1, LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MIN),
-	LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MAX), 1u, BT_AUDIO_CONTEXT_TYPE_MEDIA);
+	LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MAX), 1u,
+	BT_AUDIO_CONTEXT_TYPE_MEDIA | BT_AUDIO_CONTEXT_TYPE_CONVERSATIONAL);
 
 static enum bt_audio_dir caps_dirs[] = {
 	BT_AUDIO_DIR_SINK,
