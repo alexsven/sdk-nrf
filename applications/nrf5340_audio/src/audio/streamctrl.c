@@ -457,6 +457,8 @@ static void le_audio_msg_sub_thread(void)
 			break;
 
 		case LE_AUDIO_EVT_PRES_DELAY_SET:
+			LOG_DBG("Set presentation delay");
+
 			ret = le_audio_config_get(NULL, NULL, &pres_delay_us);
 			if (ret) {
 				LOG_ERR("Failed to get config: %d", ret);
@@ -474,6 +476,8 @@ static void le_audio_msg_sub_thread(void)
 			break;
 
 		case LE_AUDIO_EVT_PA_SYNC_LOST:
+			LOG_DBG("PA sync lost");
+
 			if (IS_ENABLED(CONFIG_BT_OBSERVER)) {
 				ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_BROADCAST, NULL);
 				if (ret) {
@@ -581,6 +585,7 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 		if (ret) {
 			LOG_WRN("Failed to set extended advertisement data");
 		}
+
 		break;
 
 	case BT_MGMT_SECURITY_CHANGED:
@@ -607,6 +612,7 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 		if (ret) {
 			LOG_WRN("Failed to set PA sync");
 		}
+
 		break;
 
 	default:

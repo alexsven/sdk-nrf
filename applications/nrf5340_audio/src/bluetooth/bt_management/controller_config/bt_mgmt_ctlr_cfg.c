@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "bt_ctlr_cfg.h"
+#include "bt_mgmt_ctlr_cfg_internal.h"
 
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/sys/byteorder.h>
@@ -15,7 +15,7 @@
 #include "ble_hci_vsc.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_ctlr_cfg, CONFIG_BT_CTLR_CFG_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_mgmt_ctlr_cfg, CONFIG_BT_MGMT_CTLR_CFG_LOG_LEVEL);
 
 #define WDT_TIMEOUT_MS	      1200
 #define CTLR_POLL_INTERVAL_MS (WDT_TIMEOUT_MS - 200)
@@ -125,7 +125,7 @@ static void work_ctlr_poll(struct k_work *work)
 	int ret;
 	uint16_t ctlr_version = 0;
 
-	ret = bt_ctlr_version_get(&ctlr_version);
+	ret = bt_mgmt_ctlr_cfg_version_get(&ctlr_version);
 	ERR_CHK_MSG(ret, "Failed to contact net core");
 
 	if (!ctlr_version) {
@@ -146,7 +146,7 @@ static void wdt_timeout_cb(int channel_id, void *user_data)
 	ERR_CHK_MSG(-ETIMEDOUT, "Controller not responsive");
 }
 
-int bt_ctlr_version_get(uint16_t *ctlr_version)
+int bt_mgmt_ctlr_cfg_version_get(uint16_t *ctlr_version)
 {
 	int ret;
 	struct net_buf *rsp;
@@ -165,12 +165,12 @@ int bt_ctlr_version_get(uint16_t *ctlr_version)
 	return 0;
 }
 
-int bt_ctlr_cfg_init(bool watchdog_enable)
+int bt_mgmt_ctlr_cfg_init(bool watchdog_enable)
 {
 	int ret;
 	uint16_t ctlr_version = 0;
 
-	ret = bt_ctlr_version_get(&ctlr_version);
+	ret = bt_mgmt_ctlr_cfg_version_get(&ctlr_version);
 	if (ret) {
 		return ret;
 	}

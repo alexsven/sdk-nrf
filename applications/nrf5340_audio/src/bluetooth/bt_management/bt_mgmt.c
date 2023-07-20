@@ -18,10 +18,10 @@
 #include "button_handler.h"
 #include "button_assignments.h"
 #include "ble_hci_vsc.h"
-#include "bt_ctlr_cfg.h"
+#include "bt_mgmt_ctlr_cfg_internal.h"
 
 #if defined(CONFIG_AUDIO_DFU_ENABLE)
-#include "bt_mgmt_dfu.h"
+#include "bt_mgmt_dfu_internal.h"
 #endif
 
 #include <zephyr/logging/log.h>
@@ -371,16 +371,15 @@ int bt_mgmt_init(void)
 	}
 
 	if (pressed) {
-		ret = bt_ctlr_cfg_init(false);
+		ret = bt_mgmt_ctlr_cfg_init(false);
 		if (ret) {
 			return ret;
 		}
 		/* This call will not return */
 		bt_mgmt_dfu_start();
 	}
-
 #endif
-	ret = bt_ctlr_cfg_init(true);
+	ret = bt_mgmt_ctlr_cfg_init(true);
 	if (ret) {
 		return ret;
 	}

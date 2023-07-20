@@ -12,7 +12,7 @@
 #include "bt_mgmt_scan_for_conn_internal.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(bt_mgmt);
+LOG_MODULE_REGISTER(bt_mgmt_scan, CONFIG_BT_MGMT_SCAN_LOG_LEVEL);
 
 static char srch_name[BLE_SEARCH_NAME_MAX_LEN];
 

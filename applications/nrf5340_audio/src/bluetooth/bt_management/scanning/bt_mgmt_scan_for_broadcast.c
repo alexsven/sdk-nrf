@@ -18,7 +18,7 @@
 #include "nrf5340_audio_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(bt_mgmt);
+LOG_MODULE_DECLARE(bt_mgmt_scan);
 
 /* Any value above 0xFFFFFF is invalid, so we can just use 0xFFFFFFFF to denote
  * invalid broadcast ID

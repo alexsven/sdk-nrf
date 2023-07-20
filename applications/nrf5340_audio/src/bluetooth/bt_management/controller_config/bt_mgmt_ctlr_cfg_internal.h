@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#ifndef _BT_CTRL_CFG_H_
-#define _BT_CTRL_CFG_H_
+#ifndef _BT_MGMT_CTRL_CFG_INTERNAL_H_
+#define _BT_MGMT_CTRL_CFG_INTERNAL_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,7 +17,7 @@
  *
  * @return	0 if success, error otherwise
  */
-int bt_ctlr_version_get(uint16_t *ctrl_version);
+int bt_mgmt_ctlr_cfg_version_get(uint16_t *ctrl_version);
 
 /**
  * @brief	Configure the Bluetooth controller.
@@ -27,6 +27,6 @@ int bt_ctlr_version_get(uint16_t *ctrl_version);
  *
  * @return	0 if success, error otherwise
  */
-int bt_ctlr_cfg_init(bool watchdog_enable);
+int bt_mgmt_ctlr_cfg_init(bool watchdog_enable);
 
-#endif
+#endif /* _BT_MGMT_CTRL_CFG_INTERNAL_H_ */

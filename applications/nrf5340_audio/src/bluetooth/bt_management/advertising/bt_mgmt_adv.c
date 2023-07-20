@@ -14,7 +14,7 @@
 #include "nrf5340_audio_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(bt_mgmt);
+LOG_MODULE_REGISTER(bt_mgmt_adv, CONFIG_BT_MGMT_ADV_LOG_LEVEL);
 
 ZBUS_CHAN_DECLARE(bt_mgmt_chan);
 
