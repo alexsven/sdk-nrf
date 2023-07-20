@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#ifndef _BT_MEDIA_CONTROL_H_
-#define _BT_MEDIA_CONTROL_H_
+#ifndef _BT_CONTENT_CTRL_MEDIA_INTERNAL_H_
+#define _BT_CONTENT_CTRL_MEDIA_INTERNAL_H_
 
 #include <zephyr/bluetooth/conn.h>
 
@@ -14,7 +14,7 @@
  *
  * @param	play	Differentiate between play command and pause command.
  */
-typedef void (*bt_media_control_play_pause_cb)(bool play);
+typedef void (*bt_content_ctrl_media_play_pause_cb)(bool play);
 
 /**
  * @brief	Discover MCS and included services, only valid for client.
@@ -23,7 +23,7 @@ typedef void (*bt_media_control_play_pause_cb)(bool play);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_discover(struct bt_conn *conn);
+int bt_content_ctrl_media_discover(struct bt_conn *conn);
 
 /**
  * @brief	Get the current state of the media player, only valid for client.
@@ -32,7 +32,7 @@ int bt_media_control_discover(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_state_update(struct bt_conn *conn);
+int bt_content_ctrl_media_state_update(struct bt_conn *conn);
 
 /**
  * @brief	Send play command to the media player,
@@ -44,7 +44,7 @@ int bt_media_control_state_update(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_play(struct bt_conn *conn);
+int bt_content_ctrl_media_play(struct bt_conn *conn);
 
 /**
  * @brief	Send pause command to the media player,
@@ -56,7 +56,7 @@ int bt_media_control_play(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_pause(struct bt_conn *conn);
+int bt_content_ctrl_media_pause(struct bt_conn *conn);
 
 /**
  * @brief	Reset the MCP's MCS discovered state, only valid for client.
@@ -65,14 +65,14 @@ int bt_media_control_pause(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_conn_disconnected(struct bt_conn *conn);
+int bt_content_ctrl_media_conn_disconnected(struct bt_conn *conn);
 
 /**
  * @brief	Initialize the Media Control Client.
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_client_init(void);
+int bt_content_ctrl_media_client_init(void);
 
 /**
  * @brief	Initialize the Media Control Server.
@@ -81,6 +81,6 @@ int bt_media_control_client_init(void);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_media_control_server_init(bt_media_control_play_pause_cb play_pause_cb);
+int bt_content_ctrl_media_server_init(bt_content_ctrl_media_play_pause_cb play_pause_cb);
 
-#endif /* _BT_MEDIA_CONTROL_H_ */
+#endif /* _BT_CONTENT_CTRL_MEDIA_INTERNAL_H_ */

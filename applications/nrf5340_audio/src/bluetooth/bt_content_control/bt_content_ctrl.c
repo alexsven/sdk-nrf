@@ -4,16 +4,16 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "bt_content_control.h"
+#include "bt_content_ctrl.h"
 
 #include <zephyr/zbus/zbus.h>
 
-#include "bt_media_control.h"
+#include "bt_content_ctrl_media_internal.h"
 #include "nrf5340_audio_common.h"
 #include "macros_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_content_control, CONFIG_BT_CONTENT_CONTROL_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_content_ctrl, CONFIG_BT_CONTENT_CTRL_LOG_LEVEL);
 
 ZBUS_CHAN_DEFINE(cont_media_chan, struct content_control_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
@@ -33,13 +33,13 @@ static void media_control_cb(bool play)
 	ERR_CHK_MSG(ret, "zbus publication failed");
 }
 
-int bt_content_control_start(struct bt_conn *conn)
+int bt_content_ctrl_start(struct bt_conn *conn)
 {
 	int ret;
 	struct content_control_msg msg;
 
 	if (IS_ENABLED(CONFIG_BT_MCC) || IS_ENABLED(CONFIG_BT_MCS)) {
-		ret = bt_media_control_play(conn);
+		ret = bt_content_ctrl_media_play(conn);
 		if (ret) {
 			LOG_WRN("Failed to change streaming state");
 			return ret;
@@ -56,13 +56,13 @@ int bt_content_control_start(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_content_control_stop(struct bt_conn *conn)
+int bt_content_ctrl_stop(struct bt_conn *conn)
 {
 	int ret;
 	struct content_control_msg msg;
 
 	if (IS_ENABLED(CONFIG_BT_MCC) || IS_ENABLED(CONFIG_BT_MCS)) {
-		ret = bt_media_control_pause(conn);
+		ret = bt_content_ctrl_media_pause(conn);
 		if (ret) {
 			LOG_WRN("Failed to change streaming state");
 			return ret;
@@ -79,26 +79,26 @@ int bt_content_control_stop(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_content_control_conn_disconnected(struct bt_conn *conn)
+int bt_content_ctrl_conn_disconnected(struct bt_conn *conn)
 {
 	int ret;
 
 	if (IS_ENABLED(CONFIG_BT_MCC)) {
-		ret = bt_media_control_conn_disconnected(conn);
+		ret = bt_content_ctrl_media_conn_disconnected(conn);
 		if (ret) {
-			LOG_ERR("bt_media_control_conn_disconnected failed with %d", ret);
+			LOG_ERR("bt_content_ctrl_media_conn_disconnected failed with %d", ret);
 		}
 	}
 
 	return 0;
 }
 
-int bt_content_control_discover(struct bt_conn *conn)
+int bt_content_ctrl_discover(struct bt_conn *conn)
 {
 	int ret;
 
 	if (IS_ENABLED(CONFIG_BT_MCC)) {
-		ret = bt_media_control_discover(conn);
+		ret = bt_content_ctrl_media_discover(conn);
 		if (ret) {
 			LOG_ERR("Failed to discover media control client");
 			return ret;
@@ -108,12 +108,12 @@ int bt_content_control_discover(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_content_control_init(void)
+int bt_content_ctrl_init(void)
 {
 	int ret;
 
 	if (IS_ENABLED(CONFIG_BT_MCS)) {
-		ret = bt_media_control_server_init(media_control_cb);
+		ret = bt_content_ctrl_media_server_init(media_control_cb);
 		if (ret) {
 			LOG_ERR("MCS server init failed");
 			return ret;
@@ -121,7 +121,7 @@ int bt_content_control_init(void)
 	}
 
 	if (IS_ENABLED(CONFIG_BT_MCC)) {
-		ret = bt_media_control_client_init();
+		ret = bt_content_ctrl_media_client_init();
 		if (ret) {
 			LOG_ERR("MCS client init failed");
 			return ret;

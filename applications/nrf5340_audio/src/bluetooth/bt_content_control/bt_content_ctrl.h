@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#ifndef _BT_CONTENT_CONTROL_H_
-#define _BT_CONTENT_CONTROL_H_
+#ifndef _BT_CONTENT_CTRL_H_
+#define _BT_CONTENT_CTRL_H_
 
 #include <zephyr/bluetooth/conn.h>
 
@@ -16,7 +16,7 @@
  *
  * @return	0 for success, error otherwise.
  */
-int bt_content_control_start(struct bt_conn *conn);
+int bt_content_ctrl_start(struct bt_conn *conn);
 
 /**
  * @brief	Stop content.
@@ -25,7 +25,7 @@ int bt_content_control_start(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_content_control_stop(struct bt_conn *conn);
+int bt_content_ctrl_stop(struct bt_conn *conn);
 
 /**
  * @brief	Handle disconnected connection for content control services.
@@ -34,7 +34,7 @@ int bt_content_control_stop(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_content_control_conn_disconnected(struct bt_conn *conn);
+int bt_content_ctrl_conn_disconnected(struct bt_conn *conn);
 
 /**
  * @brief	Discover content control services for a given conn pointer.
@@ -43,13 +43,13 @@ int bt_content_control_conn_disconnected(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int bt_content_control_discover(struct bt_conn *conn);
+int bt_content_ctrl_discover(struct bt_conn *conn);
 
 /**
  * @brief	Initialize content control module.
  *
  * @return	0 for success, error otherwise.
  */
-int bt_content_control_init(void);
+int bt_content_ctrl_init(void);
 
-#endif /* _BT_CONTENT_CONTROL_H_ */
+#endif /* _BT_CONTENT_CTRL_H_ */

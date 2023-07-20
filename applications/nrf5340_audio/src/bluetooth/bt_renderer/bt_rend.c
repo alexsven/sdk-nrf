@@ -8,11 +8,11 @@
 
 #include <zephyr/zbus/zbus.h>
 
-#include "bt_volume.h"
+#include "bt_rend_vol_internal.h"
 #include "nrf5340_audio_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_renderer, CONFIG_BT_RENDERER_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_rend, CONFIG_BT_REND_LOG_LEVEL);
 
 ZBUS_CHAN_DEFINE(volume_chan, struct volume_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
@@ -23,7 +23,7 @@ int bt_rend_volume_up(void)
 	struct volume_msg msg;
 
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR) || IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
-		ret = bt_vol_up();
+		ret = bt_rend_vol_up();
 		return ret;
 	}
 
@@ -39,7 +39,7 @@ int bt_rend_volume_down(void)
 	struct volume_msg msg;
 
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR) || IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
-		ret = bt_vol_down();
+		ret = bt_rend_vol_down();
 		return ret;
 	}
 
@@ -56,7 +56,7 @@ int bt_rend_volume_set(uint8_t volume, bool from_vcp)
 
 	if ((IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR) || IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) &&
 	    !from_vcp) {
-		ret = bt_vol_set(volume);
+		ret = bt_rend_vol_set(volume);
 		return ret;
 	}
 
@@ -67,14 +67,14 @@ int bt_rend_volume_set(uint8_t volume, bool from_vcp)
 	return ret;
 }
 
-int bt_rend_mute(bool from_vcp)
+int bt_rend_volume_mute(bool from_vcp)
 {
 	int ret;
 	struct volume_msg msg;
 
 	if ((IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR) || IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) &&
 	    !from_vcp) {
-		ret = bt_vol_mute();
+		ret = bt_rend_vol_mute();
 		return ret;
 	}
 
@@ -84,13 +84,13 @@ int bt_rend_mute(bool from_vcp)
 	return ret;
 }
 
-int bt_rend_unmute(void)
+int bt_rend_volume_unmute(void)
 {
 	int ret;
 	struct volume_msg msg;
 
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR) || IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
-		ret = bt_vol_unmute();
+		ret = bt_rend_vol_unmute();
 		return ret;
 	}
 
@@ -106,7 +106,7 @@ int bt_rend_discover(struct bt_conn *conn)
 
 	/* Only do a VCS discover if we are volume controller */
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
-		ret = bt_vol_vcs_discover(conn);
+		ret = bt_rend_vol_discover(conn);
 		if (ret) {
 			LOG_WRN("Failed to discover VCS: %d", ret);
 			return ret;
@@ -121,7 +121,7 @@ int bt_rend_init(void)
 	int ret;
 
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
-		ret = bt_vol_vcs_ctlr_init();
+		ret = bt_rend_vol_ctlr_init();
 
 		if (ret) {
 			LOG_WRN("Failed to initialize VCS controller: %d", ret);
@@ -130,7 +130,7 @@ int bt_rend_init(void)
 	}
 
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
-		ret = bt_vol_vcs_rend_init();
+		ret = bt_rend_vol_rend_init();
 
 		if (ret) {
 			LOG_WRN("Failed to initialize VCS renderer: %d", ret);
