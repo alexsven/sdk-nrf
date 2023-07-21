@@ -19,6 +19,7 @@
 #include "button_assignments.h"
 #include "ble_hci_vsc.h"
 #include "bt_mgmt_ctlr_cfg_internal.h"
+#include "bt_mgmt_adv_internal.h"
 
 #if defined(CONFIG_AUDIO_DFU_ENABLE)
 #include "bt_mgmt_dfu_internal.h"
@@ -92,7 +93,7 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 		}
 
 		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
-			ret = bt_mgmt_adv_restart();
+			ret = bt_mgmt_adv_start(NULL, 0, NULL, 0, true);
 			if (ret) {
 				LOG_ERR("Failed to restart advertising: %d", ret);
 			}
@@ -169,7 +170,7 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	ERR_CHK(ret);
 
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
-		ret = bt_mgmt_adv_restart();
+		ret = bt_mgmt_adv_start(NULL, 0, NULL, 0, true);
 		ERR_CHK(ret);
 	}
 
@@ -236,10 +237,8 @@ static int bonding_clear_check(void)
 	}
 
 	if (pressed) {
-		if (IS_ENABLED(CONFIG_SETTINGS)) {
-			LOG_INF("Clearing all bonds");
-			bt_unpair(BT_ID_DEFAULT, NULL);
-		}
+		ret = bt_mgmt_bonding_clear();
+		return ret;
 	}
 	return 0;
 }
@@ -293,6 +292,23 @@ static int random_static_addr_cfg(void)
 	 * FICR), then a random address is created
 	 */
 	LOG_WRN("Unable to read from FICR");
+
+	return 0;
+}
+
+int bt_mgmt_bonding_clear(void)
+{
+	int ret;
+
+	if (IS_ENABLED(CONFIG_SETTINGS)) {
+		LOG_INF("Clearing all bonds");
+
+		ret = bt_unpair(BT_ID_DEFAULT, NULL);
+		if (ret) {
+			LOG_ERR("Failed to clear bonding: %d", ret);
+			return ret;
+		}
+	}
 
 	return 0;
 }

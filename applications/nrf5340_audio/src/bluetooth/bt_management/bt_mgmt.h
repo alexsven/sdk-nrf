@@ -48,77 +48,69 @@ enum bt_mgmt_scan_type {
 };
 
 /**
- * @brief	Start scanning for advertisements
+ * @brief	Start scanning for advertisements.
  *
  * @param	scan_intvl	Scan interval in units of 0.625ms.
- *				Can be 0, valid range 0x4 - 0xFFFF
+ *				Can be 0, valid range 0x4 - 0xFFFF.
  * @param	scan_win	Scan window in units of 0.625ms.
- *				Can be 0, valid range 0x4 - 0xFFFF
- * @param	type		Type to scan for (conn, broadcast, etc)
+ *				Can be 0, valid range 0x4 - 0xFFFF.
+ * @param	type		Type to scan for (conn, broadcast, etc).
  * @param	name		Name to search for, device name or broadcast name,
  *				depending on type of search. Can max be
  *				BLE_SEARCH_NAME_MAX_LEN long, everything beyond that
- *				will be cropped. Can be NULL
+ *				will be cropped. Can be NULL.
  *
- * @note	If 0 or NULL is given as the input the previous/default value will be used
+ * @note	If 0 or NULL is given as the input the previous/default value will be used.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_scan_start(uint16_t scan_intvl, uint16_t scan_win, enum bt_mgmt_scan_type type,
 		       char const *const name);
-
 /**
- * @brief	Restart advertising
+ * @brief	Create and start advertising for ACL connection.
  *
- * @note	Will use the same advertising parameters as
- *		when bt_mgmt_adv_start was called
+ * @param	ext_adv		The data to be put in the extended advertisement.
+ * @param	ext_adv_size	Size of ext_adv.
+ * @param	per_adv		The data for the periodic advertisement, can be NULL.
+ * @param	per_adv_size	Size of per_adv.
+ * @param	connectable	Specify if advertisement should be connectable or not.
  *
- * @return	0 if success, error otherwise
- */
-int bt_mgmt_adv_restart(void);
-
-/**
- * @brief	Create and start advertising for ACL connection
+ * @note	To restart advertising; call with all 0s and NULL. Will use the same
+ *		advertising parameters as when bt_mgmt_adv_start was first called.
  *
- * @param[in]	ext_adv		The data to be put in the extended advertisement
- * @param[in]	ext_adv_size	Size of ext_adv
- * @param[in]	per_adv		The data for the periodic advertisement, can be NULL
- * @param[in]	per_adv_size	Size of per_adv
- * @param[in]	connectable	Specify if advertisement should be connectable or not
- *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_adv_start(const struct bt_data *ext_adv, size_t ext_adv_size,
 		      const struct bt_data *per_adv, size_t per_adv_size, bool connectable);
 
 /**
- * @brief	Initialize the advertising part of the Bluetooth management module
+ * @brief	Clear all bonded devices.
  *
- * @note	Will be called from bt_mgmt_init()
+ * @return	0 if success, error otherwise.
  */
-void bt_mgmt_adv_init(void);
+int bt_mgmt_bonding_clear(void);
 
 /**
- * @brief	Delete a periodic advertisement sync
+ * @brief	Delete a periodic advertisement sync.
  *
- * @param	Pointer to the periodic advertisement
+ * @param	Pointer to the periodic advertisement.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_pa_sync_delete(struct bt_le_per_adv_sync *pa_sync);
 
 /**
- * @brief	Disconnect from a remote device or cancel pending connection
+ * @brief	Disconnect from a remote device or cancel pending connection.
  *
- * @param	conn	Connection to disconnect
- * @param	reason	Reason code for the disconnection
+ * @param	conn	Connection to disconnect.
+ * @param	reason	Reason code for the disconnection.
  */
 void bt_mgmt_conn_disconnect(struct bt_conn *conn, uint8_t reason);
 
 /**
- * @brief	Initialize the Bluetooth management module
+ * @brief	Initialize the Bluetooth management module.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_init(void);
 

@@ -479,8 +479,7 @@ int le_audio_send(struct encoded_audio enc_audio)
 	return 0;
 }
 
-int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb,
-		    le_audio_nonvalid_iso_cfgs_cb nonvalid_cfgs_cb)
+int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
 
@@ -496,7 +495,6 @@ int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_
 	}
 
 	ARG_UNUSED(recv_cb);
-	ARG_UNUSED(nonvalid_cfgs_cb);
 
 	LOG_INF("Enabling broadcast gateway %s", CONFIG_BT_AUDIO_BROADCAST_NAME);
 

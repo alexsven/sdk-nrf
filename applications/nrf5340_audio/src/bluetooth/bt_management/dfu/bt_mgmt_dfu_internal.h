@@ -8,9 +8,9 @@
 #define _BT_MGMT_DFU_INTERNAL_H_
 
 /**
- * @brief Enter DFU mode. Advertise SMP_SVR service only
+ * @brief Enter DFU mode. Advertise SMP_SVR service only.
  *
- * @note This call does not return
+ * @note This call does not return.
  */
 void bt_mgmt_dfu_start(void);
 

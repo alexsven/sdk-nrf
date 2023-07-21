@@ -13,9 +13,9 @@
 /**
  * @brief	Get the Bluetooth controller version from the NET core.
  *
- * @param[out]	ctrl_version	The controller version
+ * @param[out]	ctrl_version	The controller version.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_ctlr_cfg_version_get(uint16_t *ctrl_version);
 
@@ -25,7 +25,7 @@ int bt_mgmt_ctlr_cfg_version_get(uint16_t *ctrl_version);
  * @param[in]	watchdog_enable	If true, will at given intervals poll the controller
  *				to ensure it is still alive.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_ctlr_cfg_init(bool watchdog_enable);
 

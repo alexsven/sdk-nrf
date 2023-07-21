@@ -10,12 +10,12 @@
 #include <zephyr/bluetooth/bluetooth.h>
 
 /**
- * @brief	Scan for a connection with a given device name
+ * @brief	Scan for a connection with a given device name.
  *
- * @param	scan_param	The scan parameters to use
- * @param	name		Device name to search for
+ * @param	scan_param	The scan parameters to use.
+ * @param	name		Device name to search for.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_mgmt_scan_for_conn_start(struct bt_le_scan_param *scan_param, char const *const name);
 

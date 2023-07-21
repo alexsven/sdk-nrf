@@ -33,11 +33,12 @@ enum le_audio_evt_type {
 	LE_AUDIO_EVT_STREAMING,
 	LE_AUDIO_EVT_NOT_STREAMING,
 	LE_AUDIO_EVT_PA_SYNC_LOST,
-	LE_AUDIO_EVT_NUM_EVTS
+	LE_AUDIO_EVT_NO_VALID_CFG,
 };
 
 struct le_audio_msg {
 	enum le_audio_evt_type event;
+	struct bt_conn *conn;
 };
 
 enum bt_mgmt_evt_type {

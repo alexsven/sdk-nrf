@@ -153,25 +153,25 @@ static void advertising_process(struct k_work *work)
 	LOG_INF("Advertising successfully started");
 }
 
-int bt_mgmt_adv_restart(void)
-{
-	if (adv_local == NULL) {
-		LOG_ERR("No valid advertising data stored");
-		return -ENOENT;
-	}
-
-	k_work_submit(&adv_work);
-
-	return 0;
-}
-
 int bt_mgmt_adv_start(const struct bt_data *adv, size_t adv_size, const struct bt_data *per_adv,
 		      size_t per_adv_size, bool connectable)
 {
 	int ret;
 
+	/* Special case for restarting advertising */
+	if (adv == NULL && adv_size == 0 && per_adv == NULL && per_adv_size == 0) {
+		if (adv_local == NULL) {
+			LOG_ERR("No valid advertising data stored");
+			return -ENOENT;
+		}
+
+		k_work_submit(&adv_work);
+
+		return 0;
+	}
+
 	if (adv == NULL) {
-		LOG_ERR("No adv struct receieved");
+		LOG_ERR("No adv struct received");
 		return -EINVAL;
 	}
 

@@ -617,13 +617,11 @@ int le_audio_send(struct encoded_audio enc_audio)
 	return -ENXIO;
 }
 
-int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb,
-		    le_audio_nonvalid_iso_cfgs_cb nonvalid_cfgs_cb)
+int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
 
 	ARG_UNUSED(timestmp_cb);
-	ARG_UNUSED(nonvalid_cfgs_cb);
 
 	ret = initialize(recv_cb);
 	if (ret) {

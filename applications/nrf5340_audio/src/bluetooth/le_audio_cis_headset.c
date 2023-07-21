@@ -66,12 +66,13 @@ static const struct bt_data ad_peer[] = {
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_PACS_VAL)),
 	BT_CSIP_DATA_RSI(csip_rsi)};
 
-static void le_audio_event_publish(enum le_audio_evt_type event)
+static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn *conn)
 {
 	int ret;
 	struct le_audio_msg msg;
 
 	msg.event = event;
+	msg.conn = conn;
 
 	ret = zbus_chan_pub(&le_audio_chan, &msg, K_NO_WAIT);
 	ERR_CHK(ret);
@@ -210,7 +211,7 @@ static int lc3_config_cb(struct bt_conn *conn, const struct bt_bap_ep *ep, enum 
 			if (dir == BT_AUDIO_DIR_SINK) {
 				LOG_DBG("BT_AUDIO_DIR_SINK");
 				print_codec(codec, dir);
-				le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED);
+				le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, conn);
 			}
 #if (CONFIG_BT_AUDIO_TX)
 			else if (dir == BT_AUDIO_DIR_SOURCE) {
@@ -249,7 +250,7 @@ static int lc3_reconfig_cb(struct bt_bap_stream *stream, enum bt_audio_dir dir,
 static int lc3_qos_cb(struct bt_bap_stream *stream, const struct bt_codec_qos *qos,
 		      struct bt_bap_ascs_rsp *rsp)
 {
-	le_audio_event_publish(LE_AUDIO_EVT_PRES_DELAY_SET);
+	le_audio_event_publish(LE_AUDIO_EVT_PRES_DELAY_SET, stream->conn);
 
 	LOG_DBG("QoS: stream %p qos %p", (void *)stream, (void *)qos);
 
@@ -281,7 +282,7 @@ static int lc3_disable_cb(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *
 {
 	LOG_DBG("Disable: stream %p", (void *)stream);
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 
 	return 0;
 }
@@ -290,7 +291,7 @@ static int lc3_stop_cb(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *rsp
 {
 	LOG_DBG("Stop: stream %p", (void *)stream);
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 
 	return 0;
 }
@@ -299,7 +300,7 @@ static int lc3_release_cb(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *
 {
 	LOG_DBG("Release: stream %p", (void *)stream);
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 
 	return 0;
 }
@@ -345,7 +346,7 @@ static void stream_start_cb(struct bt_bap_stream *stream)
 {
 	LOG_INF("Stream %p started", stream);
 
-	le_audio_event_publish(LE_AUDIO_EVT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_STREAMING, stream->conn);
 }
 
 static void stream_released_cb(struct bt_bap_stream *stream)
@@ -376,7 +377,7 @@ static void stream_stop_cb(struct bt_bap_stream *stream, uint8_t reason)
 	atomic_clear(&iso_tx_pool_alloc);
 #endif /* (CONFIG_BT_AUDIO_TX) */
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 }
 
 static struct bt_bap_stream_ops stream_ops = {
@@ -705,12 +706,9 @@ int le_audio_send(struct encoded_audio enc_audio)
 #endif /* (CONFIG_BT_AUDIO_TX) */
 }
 
-int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb,
-		    le_audio_nonvalid_iso_cfgs_cb nonvalid_cfgs_cb)
+int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
-
-	ARG_UNUSED(nonvalid_cfgs_cb);
 
 	ret = initialize(recv_cb, timestmp_cb);
 	if (ret) {

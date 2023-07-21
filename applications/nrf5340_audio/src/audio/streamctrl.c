@@ -258,12 +258,6 @@ static int test_tone_button_press(void)
 	return 0;
 }
 
-/* TODO: Change to event based approach */
-static void nonvalid_iso_cfgs(struct bt_conn *conn)
-{
-	bt_mgmt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-}
-
 /* Handle button activity */
 static void button_msg_sub_thread(void)
 {
@@ -490,6 +484,13 @@ static void le_audio_msg_sub_thread(void)
 
 			break;
 
+		case LE_AUDIO_EVT_NO_VALID_CFG:
+			LOG_WRN("No valid configurations found, will disconnect");
+
+			bt_mgmt_conn_disconnect(msg.conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+
+			break;
+
 		default:
 			LOG_WRN("Unexpected/unhandled le_audio event: %d", event);
 
@@ -669,8 +670,7 @@ int streamctrl_start(void)
 	ret = k_thread_name_set(audio_datapath_thread_id, "AUDIO DATAPATH");
 	ERR_CHK(ret);
 
-	ret = le_audio_enable(le_audio_rx_data_handler, audio_datapath_sdu_ref_update,
-			      nonvalid_iso_cfgs);
+	ret = le_audio_enable(le_audio_rx_data_handler, audio_datapath_sdu_ref_update);
 	ERR_CHK_MSG(ret, "Failed to enable LE Audio");
 
 	ret = bt_rend_init();

@@ -92,7 +92,6 @@ BUILD_ASSERT(ARRAY_SIZE(headsets) >= CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT,
 
 static le_audio_receive_cb receive_cb;
 static le_audio_timestamp_cb timestamp_cb;
-static le_audio_nonvalid_iso_cfgs_cb nonvalid_configs_cb;
 
 static struct bt_bap_unicast_group *unicast_group;
 
@@ -109,12 +108,13 @@ static struct bt_bap_unicast_client_discover_params audio_source_discover_param[
 static int discover_source(struct bt_conn *conn);
 #endif /* (CONFIG_BT_AUDIO_RX) */
 
-static void le_audio_event_publish(enum le_audio_evt_type event)
+static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn *conn)
 {
 	int ret;
 	struct le_audio_msg msg;
 
 	msg.event = event;
+	msg.conn = conn;
 
 	ret = zbus_chan_pub(&le_audio_chan, &msg, K_NO_WAIT);
 	ERR_CHK(ret);
@@ -308,7 +308,7 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 			headsets[AUDIO_CH_R].headset_conn = conn;
 		} else {
 			LOG_ERR("Channel location not supported");
-			nonvalid_configs_cb(conn);
+			le_audio_event_publish(LE_AUDIO_EVT_NO_VALID_CFG, conn);
 		}
 	}
 }
@@ -500,7 +500,7 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 
 	LOG_INF("Stream %p started", (void *)stream);
 
-	le_audio_event_publish(LE_AUDIO_EVT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_STREAMING, stream->conn);
 }
 
 static void stream_metadata_updated_cb(struct bt_bap_stream *stream)
@@ -532,12 +532,12 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 	if (stream == &headsets[AUDIO_CH_L].sink_stream) {
 		if (!ep_state_check(headsets[AUDIO_CH_R].sink_stream.ep,
 				    BT_BAP_EP_STATE_STREAMING)) {
-			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 		}
 	} else if (stream == &headsets[AUDIO_CH_R].sink_stream) {
 		if (!ep_state_check(headsets[AUDIO_CH_L].sink_stream.ep,
 				    BT_BAP_EP_STATE_STREAMING)) {
-			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 		}
 	} else {
 		LOG_WRN("Unknown stream");
@@ -552,12 +552,12 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 	if (stream == &headsets[AUDIO_CH_L].sink_stream) {
 		if (!ep_state_check(headsets[AUDIO_CH_R].sink_stream.ep,
 				    BT_BAP_EP_STATE_STREAMING)) {
-			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 		}
 	} else if (stream == &headsets[AUDIO_CH_R].sink_stream) {
 		if (!ep_state_check(headsets[AUDIO_CH_L].sink_stream.ep,
 				    BT_BAP_EP_STATE_STREAMING)) {
-			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+			le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn);
 		}
 	} else {
 		LOG_WRN("Unknown stream");
@@ -629,7 +629,9 @@ static void work_stream_start(struct k_work *work)
 		ret = bt_bap_stream_start(&headsets[work_data.channel_index].source_stream);
 	} else {
 		LOG_ERR("Trying to use unknown direction");
-		nonvalid_configs_cb(headsets[work_data.channel_index].headset_conn);
+		le_audio_event_publish(LE_AUDIO_EVT_NO_VALID_CFG,
+				       headsets[work_data.channel_index].headset_conn);
+
 		return;
 	}
 
@@ -659,7 +661,8 @@ static void work_stream_start(struct k_work *work)
 		/** Defining the connection as having invalid configs, since it is not possible to
 		 *  start stream
 		 */
-		nonvalid_configs_cb(headsets[work_data.channel_index].headset_conn);
+		le_audio_event_publish(LE_AUDIO_EVT_NO_VALID_CFG,
+				       headsets[work_data.channel_index].headset_conn);
 	}
 }
 
@@ -1059,8 +1062,7 @@ static int iso_stream_send(uint8_t const *const data, size_t size, struct le_aud
 	return 0;
 }
 
-static int initialize(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb,
-		      le_audio_nonvalid_iso_cfgs_cb nonvalid_cfgs_cb)
+static int initialize(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
 	static bool initialized;
@@ -1088,7 +1090,6 @@ static int initialize(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestm
 
 	receive_cb = recv_cb;
 	timestamp_cb = timestmp_cb;
-	nonvalid_configs_cb = nonvalid_cfgs_cb;
 
 	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
 		headsets[i].sink_stream.ops = &stream_ops;
@@ -1268,7 +1269,7 @@ int le_audio_pause(void)
 	int ret_left = 0;
 	int ret_right = 0;
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, NULL);
 
 	if (ep_state_check(headsets[AUDIO_CH_L].sink_stream.ep, BT_BAP_EP_STATE_STREAMING)) {
 		ret_left = bt_bap_stream_disable(&headsets[AUDIO_CH_L].sink_stream);
@@ -1360,12 +1361,11 @@ int le_audio_send(struct encoded_audio enc_audio)
 	return 0;
 }
 
-int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb,
-		    le_audio_nonvalid_iso_cfgs_cb nonvalid_cfgs_cb)
+int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
 
-	ret = initialize(recv_cb, timestmp_cb, nonvalid_cfgs_cb);
+	ret = initialize(recv_cb, timestmp_cb);
 	if (ret) {
 		return ret;
 	}

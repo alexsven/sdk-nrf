@@ -10,60 +10,60 @@
 #include <zephyr/bluetooth/conn.h>
 
 /**
- * @brief	Adjust volume up by one step
+ * @brief	Adjust volume up by one step.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_volume_up(void);
 
 /**
- * @brief	Adjust volume down by one step
+ * @brief	Adjust volume down by one step.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_volume_down(void);
 
 /**
- * @brief	Set the volume to a given value
+ * @brief	Set the volume to a given value.
  *
- * @param	volume		Value to set the volume to (0-255)
+ * @param	volume		Value to set the volume to (0-255).
  * @param	from_vcp	Describe if the function was called from a service
- *				or from somewhere else (buttons, shell, etc)
+ *				or from somewhere else (buttons, shell, etc).
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_volume_set(uint8_t volume, bool from_vcp);
 
 /**
- * @brief	Mute the volume
+ * @brief	Mute the volume.
  *
  * @param	from_vcp	Describe if the function was called from a service
- *				or from somewhere else (buttons, shell, etc)
+ *				or from somewhere else (buttons, shell, etc).
  *
  * @return	0 if success, error otherwise
  */
 int bt_rend_volume_mute(bool from_vcp);
 
 /**
- * @brief	Unmute the volume
+ * @brief	Unmute the volume.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_volume_unmute(void);
 
 /**
- * @brief	Discover rendering services
+ * @brief	Discover rendering services.
  *
- * @param	conn	Pointer to the conn to do the discovering on
+ * @param	conn	Pointer to the conn to do the discovering on.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_discover(struct bt_conn *conn);
 
 /**
- * @brief	Initialize the rendering services/profiles
+ * @brief	Initialize the rendering services/profiles.
  *
- * @return	0 if success, error otherwise
+ * @return	0 if success, error otherwise.
  */
 int bt_rend_init(void);
 

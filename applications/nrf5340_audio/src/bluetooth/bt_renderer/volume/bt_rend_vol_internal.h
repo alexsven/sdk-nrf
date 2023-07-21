@@ -15,8 +15,8 @@
  * @param	volume	The absolute volume to set.
  *
  * @return	0 for success,
- *		-ENXIO if the feature is disabled.
- *		Other errors from underlying drivers.
+ *		-ENXIO if the feature is disabled,
+ *		other errors from underlying drivers.
  */
 int bt_rend_vol_set(uint8_t volume);
 
@@ -24,8 +24,8 @@ int bt_rend_vol_set(uint8_t volume);
  * @brief	Turn the volume up by one step.
  *
  * @return	0 for success,
- *		-ENXIO if the feature is disabled.
- *		Other errors from underlying drivers.
+ *		-ENXIO if the feature is disabled,
+ *		other errors from underlying drivers.
  */
 int bt_rend_vol_up(void);
 
@@ -33,8 +33,8 @@ int bt_rend_vol_up(void);
  * @brief	Turn the volume down by one step.
  *
  * @return	0 for success,
- *		-ENXIO if the feature is disabled.
- *		Other errors from underlying drivers.
+ *		-ENXIO if the feature is disabled,
+ *		other errors from underlying drivers.
  */
 int bt_rend_vol_down(void);
 
@@ -42,8 +42,8 @@ int bt_rend_vol_down(void);
  * @brief	Mute the output volume of the device.
  *
  * @return	0 for success,
- *		-ENXIO if the feature is disabled.
- *		Other errors from underlying drivers.
+ *		-ENXIO if the feature is disabled,
+ *		other errors from underlying drivers.
  */
 int bt_rend_vol_mute(void);
 
@@ -51,8 +51,8 @@ int bt_rend_vol_mute(void);
  * @brief	Unmute the output volume of the device.
  *
  * @return	0 for success,
- *		-ENXIO if the feature is disabled.
- *		Other errors from underlying drivers.
+ *		-ENXIO if the feature is disabled,
+ *		other errors from underlying drivers.
  */
 int bt_rend_vol_unmute(void);
 
