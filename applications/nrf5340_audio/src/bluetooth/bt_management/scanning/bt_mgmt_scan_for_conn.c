@@ -12,7 +12,7 @@
 #include "bt_mgmt.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(bt_mgmt);
+LOG_MODULE_DECLARE(bt_mgmt_scan);
 
 #define CONNECTION_PARAMETERS                                                                      \
 	BT_LE_CONN_PARAM(CONFIG_BLE_ACL_CONN_INTERVAL, CONFIG_BLE_ACL_CONN_INTERVAL,               \

@@ -557,9 +557,6 @@ config BT_AUDIO_BITRATE_BROADCAST_SRC
 endmenu # QoS
 
 #----------------------------------------------------------------------------#
-rsource "bt_ctlr/Kconfig"
-
-#----------------------------------------------------------------------------#
 menu "Log levels"
 
 module = BLE
@@ -568,6 +565,22 @@ source "subsys/logging/Kconfig.template.log_config"
 
 module = BT_MGMT
 module-str = bt-mgmt
+source "subsys/logging/Kconfig.template.log_config"
+
+module = BT_MGMT_ADV
+module-str = bt-mgmt-adv
+source "subsys/logging/Kconfig.template.log_config"
+
+module = BT_MGMT_CTLR_CFG
+module-str = bt-mgmt-ctlr-cfg
+source "subsys/logging/Kconfig.template.log_config"
+
+module = BT_MGMT_DFU
+module-str = bt-mgmt-dfu
+source "subsys/logging/Kconfig.template.log_config"
+
+module = BT_MGMT_SCAN
+module-str = bt-mgmt-scan
 source "subsys/logging/Kconfig.template.log_config"
 
 module = BT_CONTENT_CTRL
@@ -584,10 +597,6 @@ source "subsys/logging/Kconfig.template.log_config"
 
 module = BT_REND_VOL
 module-str = bt-rend-vol
-source "subsys/logging/Kconfig.template.log_config"
-
-module = BT_CTLR_CFG
-module-str = bt-ctlr-cfg
 source "subsys/logging/Kconfig.template.log_config"
 
 endmenu # Log levels

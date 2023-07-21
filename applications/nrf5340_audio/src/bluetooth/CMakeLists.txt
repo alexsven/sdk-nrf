@@ -4,13 +4,11 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-add_subdirectory(bt_ctlr)
 add_subdirectory(bt_management)
 add_subdirectory(bt_renderer)
 add_subdirectory(bt_content_control)
 
 zephyr_library_include_directories(
-    bt_ctlr
     bt_management
     bt_renderer
     bt_content_control
