@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "bt_volume.h"
+#include "bt_rend_vol_internal.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/types.h>
@@ -15,7 +15,7 @@
 #include "bt_rend.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_volume, CONFIG_BT_VOLUME_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_rend_vol, CONFIG_BT_REND_VOL_LOG_LEVEL);
 
 #define VOLUME_DEFAULT 195
 #define VOLUME_STEP    16
@@ -141,7 +141,7 @@ static void vcs_state_rend_cb_handler(int err, uint8_t volume, uint8_t mute)
 	}
 
 	if (mute) {
-		ret = bt_rend_mute(true);
+		ret = bt_rend_volume_mute(true);
 		if (ret) {
 			LOG_WRN("Error muting volume");
 		}
@@ -179,7 +179,7 @@ static void vcs_discover_cb_handler(struct bt_vcp_vol_ctlr *vcs, int err, uint8_
 	}
 }
 
-int bt_vol_set(uint8_t volume)
+int bt_rend_vol_set(uint8_t volume)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		int ret;
@@ -204,7 +204,7 @@ int bt_vol_set(uint8_t volume)
 	return -EIO;
 }
 
-int bt_vol_up(void)
+int bt_rend_vol_up(void)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		int ret;
@@ -229,7 +229,7 @@ int bt_vol_up(void)
 	return -EIO;
 }
 
-int bt_vol_down(void)
+int bt_rend_vol_down(void)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		int ret;
@@ -254,7 +254,7 @@ int bt_vol_down(void)
 	return -EIO;
 }
 
-int bt_vol_mute(void)
+int bt_rend_vol_mute(void)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		int ret;
@@ -279,7 +279,7 @@ int bt_vol_mute(void)
 	return -EIO;
 }
 
-int bt_vol_unmute(void)
+int bt_rend_vol_unmute(void)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		int ret;
@@ -304,7 +304,7 @@ int bt_vol_unmute(void)
 	return -EIO;
 }
 
-int bt_vol_vcs_discover(struct bt_conn *conn)
+int bt_rend_vol_discover(struct bt_conn *conn)
 {
 	if (IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 
@@ -327,7 +327,7 @@ int bt_vol_vcs_discover(struct bt_conn *conn)
 	return -ECANCELED;
 }
 
-int bt_vol_vcs_ctlr_init(void)
+int bt_rend_vol_ctlr_init(void)
 {
 	if (!IS_ENABLED(CONFIG_BT_VCP_VOL_CTLR)) {
 		LOG_ERR("VCP volume controller not enabled");
@@ -343,7 +343,7 @@ int bt_vol_vcs_ctlr_init(void)
 	return bt_vcp_vol_ctlr_cb_register(&vcs_client_callback);
 }
 
-int bt_vol_vcs_rend_init(void)
+int bt_rend_vol_rend_init(void)
 {
 	if (!IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
 		LOG_ERR("VCP volume renderer not enabled");

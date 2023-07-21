@@ -5,13 +5,13 @@
 #
 
 zephyr_library_include_directories(
-    content
+    media
 )
 
 target_sources(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/bt_content_control.c)
+		${CMAKE_CURRENT_SOURCE_DIR}/bt_content_ctrl.c)
 
 if (CONFIG_BT_MCC OR CONFIG_BT_MCS)
 target_sources(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/content/bt_media_control.c)
+		${CMAKE_CURRENT_SOURCE_DIR}/media/bt_content_ctrl_media.c)
 endif()

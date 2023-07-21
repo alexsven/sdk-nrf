@@ -42,14 +42,14 @@ int bt_rend_volume_set(uint8_t volume, bool from_vcp);
  *
  * @return	0 if success, error otherwise
  */
-int bt_rend_mute(bool from_vcp);
+int bt_rend_volume_mute(bool from_vcp);
 
 /**
  * @brief	Unmute the volume
  *
  * @return	0 if success, error otherwise
  */
-int bt_rend_unmute(void);
+int bt_rend_volume_unmute(void);
 
 /**
  * @brief	Discover rendering services

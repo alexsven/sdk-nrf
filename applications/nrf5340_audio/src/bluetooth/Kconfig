@@ -570,20 +570,20 @@ module = BT_MGMT
 module-str = bt-mgmt
 source "subsys/logging/Kconfig.template.log_config"
 
-module = BT_CONTENT_CONTROL
-module-str = bt_content_control
+module = BT_CONTENT_CTRL
+module-str = bt_content_ctrl
 source "subsys/logging/Kconfig.template.log_config"
 
-module = BT_MEDIA_CONTROL
-module-str = bt_media_control
+module = BT_CONTENT_CTRL_MEDIA
+module-str = bt_content_ctrl_media
 source "subsys/logging/Kconfig.template.log_config"
 
-module = BT_RENDERER
-module-str = bt-renderer
+module = BT_REND
+module-str = bt-rend
 source "subsys/logging/Kconfig.template.log_config"
 
-module = BT_VOLUME
-module-str = bt-volume
+module = BT_REND_VOL
+module-str = bt-rend-vol
 source "subsys/logging/Kconfig.template.log_config"
 
 module = BT_CTLR_CFG

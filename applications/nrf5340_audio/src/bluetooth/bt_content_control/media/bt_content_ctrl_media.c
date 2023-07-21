@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "bt_media_control.h"
+#include "bt_content_ctrl_media_internal.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/types.h>
@@ -16,12 +16,12 @@
 #include "macros_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_media_control, CONFIG_BT_MEDIA_CONTROL_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_content_ctrl_media, CONFIG_BT_CONTENT_CTRL_MEDIA_LOG_LEVEL);
 
 static uint8_t media_player_state = BT_MCS_MEDIA_STATE_PLAYING;
 
 static struct media_player *local_player;
-static bt_media_control_play_pause_cb play_pause_cb;
+static bt_content_ctrl_media_play_pause_cb play_pause_cb;
 
 enum mcs_disc_status {
 	IDLE,
@@ -112,7 +112,7 @@ static void mcc_discover_mcs_cb(struct bt_conn *conn, int err)
 	mcc_peer[idx].mcp_mcs_disc_status = FINISHED;
 	LOG_INF("Discovery of MCS finished");
 
-	ret = bt_media_control_state_update(conn);
+	ret = bt_content_ctrl_media_state_update(conn);
 	if (ret < 0 && ret != -EBUSY) {
 		LOG_WRN("Failed to update media state: %d", ret);
 	}
@@ -306,7 +306,7 @@ static int mpl_cmd_send(struct bt_conn *conn, struct mpl_cmd *cmd)
 	return 0;
 }
 
-int bt_media_control_discover(struct bt_conn *conn)
+int bt_content_ctrl_media_discover(struct bt_conn *conn)
 {
 	if (!IS_ENABLED(CONFIG_BT_MCC)) {
 		LOG_ERR("MCC not enabled");
@@ -347,7 +347,7 @@ int bt_media_control_discover(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_media_control_state_update(struct bt_conn *conn)
+int bt_content_ctrl_media_state_update(struct bt_conn *conn)
 {
 	if (!IS_ENABLED(CONFIG_BT_MCC)) {
 		LOG_ERR("MCC not enabled");
@@ -369,7 +369,7 @@ int bt_media_control_state_update(struct bt_conn *conn)
 	return bt_mcc_read_media_state(conn);
 }
 
-int bt_media_control_play(struct bt_conn *conn)
+int bt_content_ctrl_media_play(struct bt_conn *conn)
 {
 	int ret;
 	struct mpl_cmd cmd;
@@ -396,7 +396,7 @@ int bt_media_control_play(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_media_control_pause(struct bt_conn *conn)
+int bt_content_ctrl_media_pause(struct bt_conn *conn)
 {
 	int ret;
 	struct mpl_cmd cmd;
@@ -423,7 +423,7 @@ int bt_media_control_pause(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_media_control_conn_disconnected(struct bt_conn *conn)
+int bt_content_ctrl_media_conn_disconnected(struct bt_conn *conn)
 {
 	int idx = mcc_peer_index_get(conn);
 
@@ -438,7 +438,7 @@ int bt_media_control_conn_disconnected(struct bt_conn *conn)
 	return 0;
 }
 
-int bt_media_control_client_init(void)
+int bt_content_ctrl_media_client_init(void)
 {
 	if (!IS_ENABLED(CONFIG_BT_MCC)) {
 		LOG_ERR("MCC not enabled");
@@ -454,7 +454,7 @@ int bt_media_control_client_init(void)
 	return bt_mcc_init(&mcc_cb);
 }
 
-int bt_media_control_server_init(bt_media_control_play_pause_cb play_pause)
+int bt_content_ctrl_media_server_init(bt_content_ctrl_media_play_pause_cb play_pause)
 {
 	if (!IS_ENABLED(CONFIG_BT_MCS)) {
 		LOG_ERR("MCS not enabled");

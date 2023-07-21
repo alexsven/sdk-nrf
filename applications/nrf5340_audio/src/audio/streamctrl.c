@@ -28,7 +28,7 @@
 #include "bt_mgmt.h"
 #include "bt_rend.h"
 #include "audio_datapath.h"
-#include "bt_content_control.h"
+#include "bt_content_ctrl.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
@@ -296,12 +296,12 @@ static void button_msg_sub_thread(void)
 			}
 
 			if (strm_state == STATE_STREAMING) {
-				ret = bt_content_control_stop(NULL);
+				ret = bt_content_ctrl_stop(NULL);
 				if (ret) {
 					LOG_WRN("Could not stop: %d", ret);
 				}
 			} else if (strm_state == STATE_PAUSED) {
-				ret = bt_content_control_start(NULL);
+				ret = bt_content_ctrl_start(NULL);
 				if (ret) {
 					LOG_WRN("Could not start: %d", ret);
 				}
@@ -351,7 +351,7 @@ static void button_msg_sub_thread(void)
 
 		case BUTTON_5:
 			if (IS_ENABLED(CONFIG_AUDIO_MUTE)) {
-				ret = bt_rend_mute(false);
+				ret = bt_rend_volume_mute(false);
 				if (ret) {
 					LOG_WRN("Failed to mute volume");
 				}
@@ -568,9 +568,9 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 		LOG_INF("Disconnected");
 		le_audio_conn_disconnected(msg->conn);
 
-		ret = bt_content_control_conn_disconnected(msg->conn);
+		ret = bt_content_ctrl_conn_disconnected(msg->conn);
 		if (ret) {
-			LOG_ERR("bt_content_control_disconnected failed with %d", ret);
+			LOG_ERR("bt_content_ctrl_disconnected failed with %d", ret);
 		}
 
 		break;
@@ -592,7 +592,7 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 			LOG_WRN("Failed to discover rendering services");
 		}
 
-		ret = bt_content_control_discover(msg->conn);
+		ret = bt_content_ctrl_discover(msg->conn);
 		if (ret == -EALREADY) {
 			LOG_DBG("Discovery in progress or already done");
 		} else if (ret) {
@@ -670,7 +670,7 @@ int streamctrl_start(void)
 	ret = bt_rend_init();
 	ERR_CHK(ret);
 
-	ret = bt_content_control_init();
+	ret = bt_content_ctrl_init();
 	ERR_CHK(ret);
 
 	if ((CONFIG_AUDIO_DEV == HEADSET) && IS_ENABLED(CONFIG_TRANSPORT_CIS)) {
