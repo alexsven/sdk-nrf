@@ -17,12 +17,12 @@
 #include "macros_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_content_ctrl_media, CONFIG_BT_CONTENT_CTRL_MEDIA_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_content_ctrl_media, 4);
 
-static uint8_t media_player_state = BT_MCS_MEDIA_STATE_PLAYING;
+static volatile uint8_t media_player_state = BT_MCS_MEDIA_STATE_PLAYING;
 
 static struct media_player *local_player;
-static bt_content_ctrl_media_play_pause_cb play_pause_cb;
+static volatile bt_content_ctrl_media_play_pause_cb play_pause_cb;
 
 enum mcs_disc_status {
 	IDLE,
@@ -172,6 +172,14 @@ static void mcc_read_media_state_cb(struct bt_conn *conn, int err, uint8_t state
 	if (err) {
 		LOG_ERR("MCC: Media State read failed (%d)", err);
 		return;
+	}
+
+	if (state == BT_MCS_OPC_PLAY) {
+		media_control_cb(true);
+	} else if (state == BT_MCS_OPC_PAUSE) {
+		media_control_cb(false);
+	} else {
+		LOG_WRN("Unsupported state: %d", state);
 	}
 
 	media_player_state = state;

@@ -15,7 +15,7 @@
 #include "bt_rend.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_rend_vol, CONFIG_BT_REND_VOL_LOG_LEVEL);
+LOG_MODULE_REGISTER(bt_rend_vol, 4);
 
 #define VOLUME_DEFAULT 195
 #define VOLUME_STEP    16
@@ -91,6 +91,20 @@ static void vcs_state_ctlr_cb_handler(struct bt_vcp_vol_ctlr *vcs, int err, uint
 	for (int i = 0; i < ARRAY_SIZE(vcs_client_peer); i++) {
 		if (vcs == vcs_client_peer[i]) {
 			LOG_DBG("VCS state from remote device %d:", i);
+			if (IS_ENABLED(CONFIG_BT_VCP_VOL_REND)) {
+				/* Send to bt_rend */
+				ret = bt_rend_volume_set(volume, true);
+				if (ret) {
+					LOG_WRN("Failed to set volume");
+				}
+
+				if (mute) {
+					ret = bt_rend_volume_mute(true);
+					if (ret) {
+						LOG_WRN("Error muting volume");
+					}
+				}
+			}
 		} else {
 			LOG_DBG("Sync with other devices %d", i);
 			if (vcs_client_peer[i] != NULL) {

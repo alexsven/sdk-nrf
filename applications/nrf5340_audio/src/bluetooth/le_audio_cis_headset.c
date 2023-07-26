@@ -64,7 +64,8 @@ static const struct bt_data ad_peer[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL)),
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_PACS_VAL)),
-	BT_CSIP_DATA_RSI(csip_rsi)};
+	BT_CSIP_DATA_RSI(csip_rsi),
+};
 
 static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn *conn)
 {

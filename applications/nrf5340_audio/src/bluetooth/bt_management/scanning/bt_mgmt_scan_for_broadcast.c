@@ -30,7 +30,7 @@ LOG_MODULE_DECLARE(bt_mgmt_scan);
 
 ZBUS_CHAN_DECLARE(bt_mgmt_chan);
 
-struct bt_le_scan_cb scan_callback;
+static struct bt_le_scan_cb scan_callback;
 static bool cb_registered;
 static char const *srch_name;
 

@@ -110,7 +110,6 @@ static int leds_set(void)
 		return ret;
 	}
 
-#if (CONFIG_AUDIO_DEV == HEADSET)
 	enum audio_channel channel;
 
 	channel_assignment_get(&channel);
@@ -124,42 +123,36 @@ static int leds_set(void)
 	if (ret) {
 		return ret;
 	}
-#elif (CONFIG_AUDIO_DEV == GATEWAY)
-	ret = led_on(LED_APP_RGB, LED_COLOR_GREEN);
-	if (ret) {
-		return ret;
-	}
-#endif /* (CONFIG_AUDIO_DEV == HEADSET) */
 
 	return 0;
 }
 
 static int channel_assign_check(void)
 {
-#if (CONFIG_AUDIO_DEV == HEADSET) && CONFIG_AUDIO_HEADSET_CHANNEL_RUNTIME
-	int ret;
-	bool pressed;
+	if (IS_ENABLED(CONFIG_AUDIO_HEADSET_CHANNEL_RUNTIME)) {
+		int ret;
+		bool pressed;
 
-	ret = button_pressed(BUTTON_VOLUME_DOWN, &pressed);
-	if (ret) {
-		return ret;
-	}
+		ret = button_pressed(BUTTON_VOLUME_DOWN, &pressed);
+		if (ret) {
+			return ret;
+		}
 
-	if (pressed) {
-		channel_assignment_set(AUDIO_CH_L);
-		return 0;
-	}
+		if (pressed) {
+			channel_assignment_set(AUDIO_CH_L);
+			return 0;
+		}
 
-	ret = button_pressed(BUTTON_VOLUME_UP, &pressed);
-	if (ret) {
-		return ret;
-	}
+		ret = button_pressed(BUTTON_VOLUME_UP, &pressed);
+		if (ret) {
+			return ret;
+		}
 
-	if (pressed) {
-		channel_assignment_set(AUDIO_CH_R);
-		return 0;
+		if (pressed) {
+			channel_assignment_set(AUDIO_CH_R);
+			return 0;
+		}
 	}
-#endif
 
 	return 0;
 }

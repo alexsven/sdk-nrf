@@ -9,6 +9,8 @@
 
 #include <zephyr/bluetooth/conn.h>
 
+void media_control_cb(bool play);
+
 /**
  * @brief	Send the start request for content transmission.
  *
