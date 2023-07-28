@@ -15,7 +15,7 @@
 #include "bt_rend.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bt_rend_vol, 4);
+LOG_MODULE_REGISTER(bt_rend_vol, CONFIG_BT_REND_VOL_LOG_LEVEL);
 
 #define VOLUME_DEFAULT 195
 #define VOLUME_STEP    16

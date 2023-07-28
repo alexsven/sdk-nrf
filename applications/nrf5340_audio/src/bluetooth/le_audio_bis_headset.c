@@ -29,6 +29,10 @@ BUILD_ASSERT(CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT <= 2,
 ZBUS_CHAN_DEFINE(le_audio_chan, struct le_audio_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
 
+/* Similar to retries for connections */
+#define SYNC_RETRY_COUNT 6
+#define PA_SYNC_SKIP	 5
+
 struct audio_codec_info {
 	uint8_t id;
 	uint16_t cid;
@@ -46,7 +50,10 @@ struct active_audio_stream {
 	struct audio_codec_info *codec;
 };
 
+/* Sample assumes that we only have a single Scan Delegator receive state */
+static const struct bt_bap_scan_delegator_recv_state *sink_recv_state;
 static struct bt_bap_broadcast_sink *broadcast_sink;
+static struct bt_conn *broadcast_assistant_conn;
 static struct bt_bap_stream audio_streams[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 static struct audio_codec_info audio_codec_info[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 static uint32_t bis_index_bitfields[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
@@ -183,7 +190,7 @@ static void pa_synced_cb(struct bt_bap_broadcast_sink *sink, struct bt_le_per_ad
 
 	broadcast_sink = sink;
 
-	LOG_DBG("Broadcast source PA synced, waiting for BASE");
+	LOG_WRN("Broadcast source PA synced, waiting for BASE");
 }
 
 static void pa_sync_lost_cb(struct bt_bap_broadcast_sink *sink)
@@ -357,6 +364,157 @@ static struct bt_bap_broadcast_sink_cb broadcast_sink_cbs = {
 	.syncable = syncable_cb,
 };
 
+const struct bt_bap_scan_delegator_recv_state *broadcast_recv_state;
+
+static void pa_timer_handler(struct k_work *work)
+{
+	if (broadcast_recv_state != NULL) {
+		enum bt_bap_pa_state pa_state;
+
+		if (broadcast_recv_state->pa_sync_state == BT_BAP_PA_STATE_SYNCED) {
+			LOG_WRN("SYNCED");
+			return;
+		}
+
+		if (broadcast_recv_state->pa_sync_state == BT_BAP_PA_STATE_INFO_REQ) {
+			pa_state = BT_BAP_PA_STATE_NO_PAST;
+			LOG_ERR("NO PAST");
+		} else {
+			pa_state = BT_BAP_PA_STATE_FAILED;
+			LOG_ERR("PAST FAILED");
+		}
+
+		bt_bap_scan_delegator_set_pa_state(broadcast_recv_state->src_id, pa_state);
+	}
+
+	LOG_WRN("PA timeout\n");
+}
+
+static K_WORK_DELAYABLE_DEFINE(pa_timer, pa_timer_handler);
+
+static uint16_t interval_to_sync_timeout(uint16_t pa_interval)
+{
+	uint16_t pa_timeout;
+
+	if (pa_interval == BT_BAP_PA_INTERVAL_UNKNOWN) {
+		/* Use maximum value to maximize chance of success */
+		pa_timeout = BT_GAP_PER_ADV_MAX_TIMEOUT;
+	} else {
+		/* Ensure that the following calculation does not overflow silently */
+		__ASSERT(SYNC_RETRY_COUNT < 10, "SYNC_RETRY_COUNT shall be less than 10");
+
+		/* Add retries and convert to unit in 10's of ms */
+		pa_timeout = ((uint32_t)pa_interval * SYNC_RETRY_COUNT) / 10;
+
+		/* Enforce restraints */
+		pa_timeout =
+			CLAMP(pa_timeout, BT_GAP_PER_ADV_MIN_TIMEOUT, BT_GAP_PER_ADV_MAX_TIMEOUT);
+	}
+
+	return pa_timeout;
+}
+
+static int pa_sync_past(struct bt_conn *conn, uint16_t pa_interval)
+{
+	struct bt_le_per_adv_sync_transfer_param param = {0};
+	int err;
+
+	param.skip = PA_SYNC_SKIP;
+	param.timeout = interval_to_sync_timeout(pa_interval);
+
+	LOG_WRN("Interval: %d", param.timeout);
+
+	err = bt_le_per_adv_sync_transfer_subscribe(conn, &param);
+	if (err != 0) {
+		LOG_ERR("Could not do PAST subscribe: %d\n", err);
+	} else {
+		LOG_WRN("Syncing with PAST: %d\n", err);
+		(void)k_work_reschedule(&pa_timer, K_MSEC(param.timeout * 10));
+	}
+
+	return err;
+}
+
+static int pa_sync_req_cb(struct bt_conn *conn,
+			  const struct bt_bap_scan_delegator_recv_state *recv_state,
+			  bool past_avail, uint16_t pa_interval)
+{
+	int err;
+
+	sink_recv_state = recv_state;
+
+	broadcast_recv_state = recv_state;
+
+	if (recv_state->pa_sync_state == BT_BAP_PA_STATE_SYNCED ||
+	    recv_state->pa_sync_state == BT_BAP_PA_STATE_INFO_REQ) {
+		/* Already syncing */
+		/* TODO: Terminate existing sync and then sync to new?*/
+		return -1;
+	}
+
+	LOG_WRN("PA_SYNC_REQ");
+
+	if (IS_ENABLED(CONFIG_BT_PER_ADV_SYNC_TRANSFER_RECEIVER) && past_avail) {
+		LOG_WRN("PAST_AVAIL");
+		err = pa_sync_past(conn, pa_interval);
+	} else {
+		/* start scan */
+		err = 0;
+	}
+
+	return err;
+}
+
+static int pa_sync_term_req_cb(struct bt_conn *conn,
+			       const struct bt_bap_scan_delegator_recv_state *recv_state)
+{
+	int err;
+
+	sink_recv_state = recv_state;
+
+	err = bt_bap_broadcast_sink_delete(broadcast_sink);
+	if (err != 0) {
+		return err;
+	}
+
+	broadcast_sink = NULL;
+
+	return 0;
+}
+
+static void broadcast_code_cb(struct bt_conn *conn,
+			      const struct bt_bap_scan_delegator_recv_state *recv_state,
+			      const uint8_t broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE])
+{
+	LOG_WRN("Broadcast code received for %p\n", recv_state);
+
+	sink_recv_state = recv_state;
+}
+
+static int bis_sync_req_cb(struct bt_conn *conn,
+			   const struct bt_bap_scan_delegator_recv_state *recv_state,
+			   const uint32_t bis_sync_req[BT_BAP_SCAN_DELEGATOR_MAX_SUBGROUPS])
+{
+
+	LOG_WRN("BIS sync request received for %p: 0x%08x\n", recv_state, bis_sync_req[0]);
+
+	return 0;
+}
+
+void recv_state_updated_cb(struct bt_conn *conn,
+			   const struct bt_bap_scan_delegator_recv_state *recv_state)
+{
+	LOG_WRN("Receive state updated to: %d", recv_state->pa_sync_state);
+}
+
+static struct bt_bap_scan_delegator_cb scan_delegator_cbs = {
+	.pa_sync_req = pa_sync_req_cb,
+	.pa_sync_term_req = pa_sync_term_req_cb,
+	.broadcast_code = broadcast_code_cb,
+	.bis_sync_req = bis_sync_req_cb,
+	.recv_state_updated = recv_state_updated_cb,
+};
+
 static struct bt_pacs_cap capabilities = {
 	.codec = &codec_capabilities,
 };
@@ -399,6 +557,7 @@ static int initialize(le_audio_receive_cb recv_cb)
 	}
 
 	bt_bap_broadcast_sink_register_cb(&broadcast_sink_cbs);
+	bt_bap_scan_delegator_register_cb(&scan_delegator_cbs);
 
 	for (int i = 0; i < ARRAY_SIZE(audio_streams); i++) {
 		audio_streams[i].ops = &stream_ops;
@@ -508,9 +667,7 @@ int le_audio_config_get(uint32_t *bitrate, uint32_t *sampling_rate, uint32_t *pr
 
 void le_audio_conn_set(struct bt_conn *conn)
 {
-	ARG_UNUSED(conn);
-
-	LOG_WRN("%s not supported", __func__);
+	broadcast_assistant_conn = conn;
 }
 
 int le_audio_pa_sync_set(struct bt_le_per_adv_sync *pa_sync, uint32_t broadcast_id)

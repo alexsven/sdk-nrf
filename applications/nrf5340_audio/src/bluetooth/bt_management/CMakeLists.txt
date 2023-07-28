@@ -26,6 +26,11 @@ target_sources(app PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/scanning/bt_mgmt_scan_for_broadcast.c)
 endif()
 
+if (CONFIG_BT_BAP_BROADCAST_ASSISTANT)
+target_sources(app PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/scanning/bt_mgmt_scan_broadcast_assistant.c)
+endif()
+
 if (CONFIG_BT_OBSERVER)
 target_sources(app PRIVATE
 	        ${CMAKE_CURRENT_SOURCE_DIR}/scanning/bt_mgmt_scan.c)

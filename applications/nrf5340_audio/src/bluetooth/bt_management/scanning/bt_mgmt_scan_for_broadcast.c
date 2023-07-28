@@ -8,6 +8,7 @@
 
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/audio/bap.h>
 #include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/audio/audio.h>
@@ -30,7 +31,7 @@ LOG_MODULE_DECLARE(bt_mgmt_scan);
 
 ZBUS_CHAN_DECLARE(bt_mgmt_chan);
 
-static struct bt_le_scan_cb scan_callback;
+struct bt_le_scan_cb scan_callback;
 static bool cb_registered;
 static char const *srch_name;
 

@@ -72,6 +72,9 @@ K_SEM_DEFINE(peer_connected, 0, 1);
 
 static enum stream_state strm_state = STATE_PAUSED;
 
+static struct bt_le_per_adv_sync *default_pa_sync;
+static uint32_t default_broadcast_id;
+
 struct rx_stats {
 	uint32_t recv_cnt;
 	uint32_t bad_frame_cnt;
@@ -288,24 +291,6 @@ static void button_msg_sub_thread(void)
 			break;
 
 		case BUTTON_4:
-			if (IS_ENABLED(CONFIG_AUDIO_TEST_TONE)) {
-				if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-					LOG_DBG("Test tone is disabled in walkie-talkie mode");
-					break;
-				}
-
-				ret = test_tone_button_press();
-				if (ret) {
-					LOG_WRN("Failed to play test tone, ret: %d", ret);
-				}
-
-				break;
-			}
-
-			ret = le_audio_user_defined_button_press(LE_AUDIO_USER_DEFINED_ACTION_1);
-			if (ret) {
-				LOG_WRN("Failed button 4 press, ret: %d", ret);
-			}
 
 			break;
 
@@ -358,6 +343,11 @@ static void le_audio_msg_sub_thread(void)
 			if (strm_state == STATE_STREAMING) {
 				LOG_DBG("Got streaming event in streaming state");
 				break;
+			}
+
+			if (IS_ENABLED(CONFIG_BT_BAP_BROADCAST_ASSISTANT)) {
+				bt_mgmt_scan_broadcast_assistant_add_src(default_pa_sync,
+									 default_broadcast_id);
 			}
 
 			audio_system_start();
@@ -543,15 +533,25 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 			LOG_ERR("Failed to start discovery of content control: %d", ret);
 		}
 
-		break;
+		if (IS_ENABLED(CONFIG_BT_BAP_BROADCAST_ASSISTANT)) {
+			ret = bt_mgmt_scan_broadcast_assistant_discover(msg->conn);
+			if (ret) {
+				LOG_WRN("Failed to discover broadcast assistant service: %d", ret);
+			}
+		}
 
-	case BT_MGMT_PA_SYNC_OBJECT_READY:
-		LOG_INF("PA sync object ready");
-		ret = le_audio_pa_sync_set(msg->pa_sync, msg->broadcast_id);
 		k_sem_give(&peer_connected);
 		if (ret) {
 			LOG_WRN("Failed to set PA sync");
 		}
+
+		break;
+
+	case BT_MGMT_PA_SYNC_OBJECT_READY:
+		LOG_INF("PA sync object ready");
+		default_pa_sync = msg->pa_sync;
+		default_broadcast_id = msg->broadcast_id;
+		ret = le_audio_pa_sync_set(msg->pa_sync, msg->broadcast_id);
 
 		break;
 
@@ -645,13 +645,6 @@ int streamctrl_start(void)
 
 	channel_assignment_get(&channel);
 
-	ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_BROADCAST, CONFIG_BT_AUDIO_BROADCAST_NAME);
-	ERR_CHK_MSG(ret, "Failed to start scanning for broadcaster");
-
-	k_sem_take(&peer_connected, K_FOREVER);
-
-	k_sleep(K_SECONDS(10));
-
 	if (IS_ENABLED(CONFIG_BT_CENTRAL)) {
 		ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_CONN, CONFIG_BT_DEVICE_NAME);
 		ERR_CHK_MSG(ret, "Failed to start scanning for conn");
@@ -660,6 +653,15 @@ int streamctrl_start(void)
 		ERR_CHK(ret);
 	}
 
+	k_sem_take(&peer_connected, K_FOREVER);
+
+	k_sleep(K_SECONDS(2));
+
+	if (channel == AUDIO_CH_L) {
+		ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_BROADCAST,
+					 CONFIG_BT_AUDIO_BROADCAST_NAME);
+		ERR_CHK_MSG(ret, "Failed to start scanning for broadcaster");
+	}
 	started = true;
 
 	return 0;

@@ -47,6 +47,10 @@ enum bt_mgmt_scan_type {
 	BT_MGMT_SCAN_TYPE_BROADCAST = 2,
 };
 
+int bt_mgmt_scan_broadcast_assistant_add_src(struct bt_le_per_adv_sync *pa_sync,
+					     uint32_t broadcast_id);
+int bt_mgmt_scan_broadcast_assistant_discover(struct bt_conn *conn);
+
 /**
  * @brief	Start scanning for advertisements.
  *
