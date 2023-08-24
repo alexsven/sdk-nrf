@@ -11,7 +11,9 @@
 
 #include <audio_defines.h>
 
-typedef void (*audio_rx_cb)(audio_data audio);
+int unicast_server_config_get(uint32_t *bitrate, uint32_t *sampling_rate, uint32_t *pres_delay);
+
+void unicast_server_adv_get(const struct bt_data **adv, size_t *adv_size, bool periodic);
 
 /**
  * @brief	Start the Bluetooth LE Audio unicast (CIS) server.
@@ -36,14 +38,14 @@ int unicast_server_stop(void);
  *
  * @return	0 for success, error otherwise.
  */
-int unicast_server_send(struct audio_data tx);
+int unicast_server_send(struct encoded_audio enc_audio);
 
 /**
  * @brief	Enable the Bluetooth LE Audio unicast (CIS) server.
  *
  * @return	0 for success, error otherwise.
  */
-int unicast_server_enable(audio_rx_cb rx_cb);
+int unicast_server_enable(le_audio_receive_cb rx_cb);
 
 /**
  * @brief	Disable the Bluetooth LE Audio unicast (CIS) server.

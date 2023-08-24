@@ -28,6 +28,7 @@
 #include "bt_rend.h"
 #include "audio_datapath.h"
 #include "bt_content_ctrl.h"
+#include "unicast_server.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
@@ -189,7 +190,7 @@ uint8_t stream_state_get(void)
 	return strm_state;
 }
 
-void streamctrl_encoded_data_send(void const *const data, size_t size, uint8_t num_ch)
+void streamctrl_send(void const *const data, size_t size, uint8_t num_ch)
 {
 	int ret;
 	static int prev_ret;
@@ -197,7 +198,7 @@ void streamctrl_encoded_data_send(void const *const data, size_t size, uint8_t n
 	struct encoded_audio enc_audio = {.data = data, .size = size, .num_ch = num_ch};
 
 	if (strm_state == STATE_STREAMING) {
-		ret = le_audio_send(enc_audio);
+		ret = unicast_server_send(enc_audio);
 
 		if (ret != 0 && ret != prev_ret) {
 			if (ret == -ECANCELED) {
@@ -250,7 +251,6 @@ static void button_msg_sub_thread(void)
 {
 	int ret;
 	const struct zbus_channel *chan;
-	bool broadcast_alt = true;
 
 	while (1) {
 		ret = zbus_sub_wait(&button_evt_sub, &chan, K_FOREVER);
@@ -321,11 +321,6 @@ static void button_msg_sub_thread(void)
 				}
 
 				break;
-			}
-
-			ret = le_audio_user_defined_button_press(LE_AUDIO_USER_DEFINED_ACTION_1);
-			if (ret) {
-				LOG_WRN("Failed button 4 press, ret: %d", ret);
 			}
 
 			break;
@@ -406,7 +401,7 @@ static void le_audio_msg_sub_thread(void)
 		case LE_AUDIO_EVT_CONFIG_RECEIVED:
 			LOG_DBG("Config received");
 
-			ret = le_audio_config_get(&bitrate_bps, &sampling_rate_hz, NULL);
+			ret = unicast_server_config_get(&bitrate_bps, &sampling_rate_hz, NULL);
 			if (ret) {
 				LOG_WRN("Failed to get config: %d", ret);
 				break;
@@ -420,7 +415,7 @@ static void le_audio_msg_sub_thread(void)
 		case LE_AUDIO_EVT_PRES_DELAY_SET:
 			LOG_DBG("Set presentation delay");
 
-			ret = le_audio_config_get(NULL, NULL, &pres_delay_us);
+			ret = unicast_server_config_get(NULL, NULL, &pres_delay_us);
 			if (ret) {
 				LOG_ERR("Failed to get config: %d", ret);
 				break;
@@ -494,18 +489,22 @@ static void content_control_msg_sub_thread(void)
 
 		switch (event) {
 		case MEDIA_PLAY:
+			/* TODO: Discuss, this was unused
 			ret = le_audio_play();
 			if (ret && (ret != -EALREADY)) {
 				LOG_ERR("Failed to play: %d", ret);
 			}
+			*/
 
 			break;
 
 		case MEDIA_STOP:
+			/* TODO: Discuss, this was unused
 			ret = le_audio_pause();
 			if (ret && (ret != -EALREADY)) {
 				LOG_ERR("Failed to pause: %d", ret);
 			}
+			*/
 
 			break;
 
@@ -542,7 +541,8 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 	case BT_MGMT_DISCONNECTED:
 		LOG_INF("Disconnected");
-		le_audio_conn_disconnected(msg->conn);
+
+		/*TODO: le_audio_conn_disconnected(msg->conn); */
 
 		ret = bt_content_ctrl_conn_disconnected(msg->conn);
 		if (ret) {
@@ -570,10 +570,6 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 	case BT_MGMT_PA_SYNC_OBJECT_READY:
 		LOG_INF("PA sync object ready");
-		ret = le_audio_pa_sync_set(msg->pa_sync, msg->broadcast_id);
-		if (ret) {
-			LOG_WRN("Failed to set PA sync");
-		}
 
 		break;
 
@@ -631,7 +627,7 @@ int streamctrl_start(void)
 	ret = k_thread_name_set(audio_datapath_thread_id, "AUDIO DATAPATH");
 	ERR_CHK(ret);
 
-	ret = le_audio_enable(le_audio_rx_data_handler, audio_datapath_sdu_ref_update);
+	ret = unicast_server_enable(le_audio_rx_data_handler);
 	ERR_CHK_MSG(ret, "Failed to enable LE Audio");
 
 	ret = bt_rend_init();
@@ -643,7 +639,7 @@ int streamctrl_start(void)
 	size_t ext_adv_size = 0;
 	const struct bt_data *ext_adv = NULL;
 
-	le_audio_adv_get(&ext_adv, &ext_adv_size, false);
+	unicast_server_adv_get(&ext_adv, &ext_adv_size, false);
 
 	ret = bt_mgmt_adv_start(ext_adv, ext_adv_size, NULL, 0, true);
 	ERR_CHK(ret);
