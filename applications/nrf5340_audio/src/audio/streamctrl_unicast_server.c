@@ -31,7 +31,7 @@
 #include "unicast_server.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
+LOG_MODULE_REGISTER(streamctrl_unicast_server, CONFIG_STREAMCTRL_LOG_LEVEL);
 
 struct ble_iso_data {
 	uint8_t data[CONFIG_BT_ISO_RX_MTU];
@@ -46,6 +46,14 @@ DATA_FIFO_DEFINE(ble_fifo_rx, CONFIG_BUF_BLE_RX_PACKET_NUM, WB_UP(sizeof(struct 
 ZBUS_SUBSCRIBER_DEFINE(button_evt_sub, CONFIG_BUTTON_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(le_audio_evt_sub, CONFIG_LE_AUDIO_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(content_control_evt_sub, CONFIG_CONTENT_CONTROL_MSG_SUB_QUEUE_SIZE);
+
+ZBUS_CHAN_DECLARE(button_chan);
+ZBUS_CHAN_DECLARE(le_audio_chan);
+ZBUS_CHAN_DECLARE(bt_mgmt_chan);
+ZBUS_CHAN_DECLARE(cont_media_chan);
+ZBUS_CHAN_DECLARE(volume_chan);
+
+ZBUS_OBS_DECLARE(volume_evt_sub);
 
 static struct k_thread audio_datapath_thread_data;
 static struct k_thread button_msg_sub_thread_data;
@@ -582,6 +590,46 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 ZBUS_LISTENER_DEFINE(bt_mgmt_evt_sub, bt_mgmt_evt_handler);
 
+static int zbus_link(void)
+{
+	int ret;
+
+	if (IS_ENABLED(CONFIG_ZBUS) && (CONFIG_ZBUS_RUNTIME_OBSERVERS_POOL_SIZE > 0)) {
+		ret = zbus_chan_add_obs(&button_chan, &button_evt_sub, ZBUS_ADD_OBS_TIMEOUT_MS);
+		if (ret) {
+			LOG_ERR("Failed to add button sub");
+			return ret;
+		}
+
+		ret = zbus_chan_add_obs(&le_audio_chan, &le_audio_evt_sub, ZBUS_ADD_OBS_TIMEOUT_MS);
+		if (ret) {
+			LOG_ERR("Failed to add le_audio sub");
+			return ret;
+		}
+
+		ret = zbus_chan_add_obs(&bt_mgmt_chan, &bt_mgmt_evt_sub, ZBUS_ADD_OBS_TIMEOUT_MS);
+		if (ret) {
+			LOG_ERR("Failed to add bt_mgmt sub");
+			return ret;
+		}
+
+		ret = zbus_chan_add_obs(&volume_chan, &volume_evt_sub, ZBUS_ADD_OBS_TIMEOUT_MS);
+		if (ret) {
+			LOG_ERR("Failed to add volume sub");
+			return ret;
+		}
+
+		ret = zbus_chan_add_obs(&cont_media_chan, &content_control_evt_sub,
+					ZBUS_ADD_OBS_TIMEOUT_MS);
+		if (ret) {
+			LOG_ERR("Failed to add content control sub");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int streamctrl_start(void)
 {
 	int ret;
@@ -593,7 +641,11 @@ int streamctrl_start(void)
 		return -EALREADY;
 	}
 
-	audio_system_init();
+	ret = audio_system_init();
+	ERR_CHK(ret);
+
+	ret = zbus_link();
+	ERR_CHK(ret);
 
 	ret = data_fifo_init(&ble_fifo_rx);
 	ERR_CHK_MSG(ret, "Failed to set up ble_rx FIFO");
