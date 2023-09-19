@@ -38,12 +38,10 @@ DATA_FIFO_DEFINE(ble_fifo_rx, CONFIG_BUF_BLE_RX_PACKET_NUM, WB_UP(sizeof(struct 
 
 ZBUS_SUBSCRIBER_DEFINE(button_evt_sub, CONFIG_BUTTON_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(le_audio_evt_sub, CONFIG_LE_AUDIO_MSG_SUB_QUEUE_SIZE);
-ZBUS_SUBSCRIBER_DEFINE(content_control_evt_sub, CONFIG_CONTENT_CONTROL_MSG_SUB_QUEUE_SIZE);
 
 ZBUS_CHAN_DECLARE(button_chan);
 ZBUS_CHAN_DECLARE(le_audio_chan);
 ZBUS_CHAN_DECLARE(bt_mgmt_chan);
-ZBUS_CHAN_DECLARE(cont_media_chan);
 ZBUS_CHAN_DECLARE(volume_chan);
 
 ZBUS_OBS_DECLARE(volume_evt_sub);
@@ -59,8 +57,6 @@ static k_tid_t le_audio_msg_sub_thread_id;
 K_THREAD_STACK_DEFINE(audio_datapath_thread_stack, CONFIG_AUDIO_DATAPATH_STACK_SIZE);
 K_THREAD_STACK_DEFINE(button_msg_sub_thread_stack, CONFIG_BUTTON_MSG_SUB_STACK_SIZE);
 K_THREAD_STACK_DEFINE(le_audio_msg_sub_thread_stack, CONFIG_LE_AUDIO_MSG_SUB_STACK_SIZE);
-K_THREAD_STACK_DEFINE(content_control_msg_sub_thread_stack,
-		      CONFIG_CONTENT_CONTROL_MSG_SUB_STACK_SIZE);
 
 static enum stream_state strm_state = STATE_PAUSED;
 #define TEST_TONE_BASE_FREQ_HZ 1000
@@ -546,13 +542,6 @@ static int zbus_link_producers_observers(void)
 		return ret;
 	}
 
-	ret = zbus_chan_add_obs(&cont_media_chan, &content_control_evt_sub,
-				ZBUS_ADD_OBS_TIMEOUT_MS);
-	if (ret) {
-		LOG_ERR("Failed to add content control sub");
-		return ret;
-	}
-
 	return 0;
 }
 
@@ -613,28 +602,25 @@ static int ext_adv_populate(struct bt_data *ext_adv_buf, size_t ext_adv_buf_size
 	ext_adv_buf[ext_adv_buf_cnt].data = uuid_buf.data;
 	ext_adv_buf_cnt++;
 
-	ret = bt_rend_adv_get(&uuid_buf, &ext_adv_buf[ext_adv_buf_cnt],
-			      ext_adv_buf_size - ext_adv_buf_cnt);
+	ret = bt_rend_uuid_populate(&uuid_buf);
 
-	if (ret < 0) {
+	if (ret) {
+		LOG_ERR("Failed to add adv data from renderer: %d", ret);
 		return ret;
 	}
 
-	ext_adv_buf_cnt += ret;
+	ret = bt_content_ctrl_uuid_populate(&uuid_buf);
 
-	ret = bt_content_ctrl_adv_get(&uuid_buf, &ext_adv_buf[ext_adv_buf_cnt],
-				      ext_adv_buf_size - ext_adv_buf_cnt);
-
-	if (ret < 0) {
+	if (ret) {
+		LOG_ERR("Failed to add adv data from content ctrl: %d", ret);
 		return ret;
 	}
 
-	ext_adv_buf_cnt += ret;
-
-	ret = unicast_server_adv_get(&uuid_buf, &ext_adv_buf[ext_adv_buf_cnt],
-				     ext_adv_buf_size - ext_adv_buf_cnt);
+	ret = unicast_server_adv_populate(&ext_adv_buf[ext_adv_buf_cnt],
+					  ext_adv_buf_size - ext_adv_buf_cnt);
 
 	if (ret < 0) {
+		LOG_ERR("Failed to add adv data from unicast server: %d", ret);
 		return ret;
 	}
 
