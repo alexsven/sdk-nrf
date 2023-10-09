@@ -704,6 +704,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 			/* NOTE: The string below is used by the Nordic CI system */
 			LOG_WRN("No valid codec capability found for %s headset sink",
 				headsets[channel_index].ch_name);
+			headsets[channel_index].sink_ep = NULL;
 		}
 	} else if (dir == BT_AUDIO_DIR_SOURCE) {
 		if (valid_codec_cap_check(headsets[channel_index].source_codec_cap,
@@ -720,6 +721,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 		} else {
 			LOG_WRN("No valid codec capability found for %s headset source",
 				headsets[channel_index].ch_name);
+			headsets[channel_index].source_ep = NULL;
 		}
 	}
 

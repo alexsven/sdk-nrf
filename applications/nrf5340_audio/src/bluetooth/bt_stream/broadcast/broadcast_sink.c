@@ -478,6 +478,11 @@ int broadcast_sink_pa_sync_set(struct bt_le_per_adv_sync *pa_sync, uint32_t broa
 		}
 	}
 
+	/* If broadcast_sink was not in an active stream we still need to clean it up */
+	if (broadcast_sink != NULL) {
+		broadcast_sink_cleanup();
+	}
+
 	ret = bt_bap_broadcast_sink_create(pa_sync, broadcast_id, &broadcast_sink);
 	if (ret) {
 		LOG_WRN("Failed to create sink: %d", ret);
