@@ -8,6 +8,7 @@
 #define _NRF5340_AUDIO_COMMON_H_
 
 #include <nrfx_timer.h>
+#include <zephyr/bluetooth/audio/audio.h>
 
 #define AUDIO_SYNC_TIMER_I2S_FRAME_START_EVT_CAPTURE_CHANNEL 0
 #define AUDIO_SYNC_TIMER_CURR_TIME_CAPTURE_CHANNEL	     1
@@ -39,6 +40,7 @@ enum le_audio_evt_type {
 struct le_audio_msg {
 	enum le_audio_evt_type event;
 	struct bt_conn *conn;
+	enum bt_audio_dir dir;
 };
 
 struct sdu_ref_msg {
