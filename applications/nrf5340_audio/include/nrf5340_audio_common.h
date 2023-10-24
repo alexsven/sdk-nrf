@@ -7,8 +7,8 @@
 #ifndef _NRF5340_AUDIO_COMMON_H_
 #define _NRF5340_AUDIO_COMMON_H_
 
-#define ZBUS_READ_TIMEOUT_MS				     K_MSEC(100)
-#define ZBUS_ADD_OBS_TIMEOUT_MS				     K_MSEC(200)
+#define ZBUS_READ_TIMEOUT_MS	K_MSEC(100)
+#define ZBUS_ADD_OBS_TIMEOUT_MS K_MSEC(200)
 
 /***** Messages for zbus ******/
 
@@ -33,6 +33,7 @@ enum le_audio_evt_type {
 struct le_audio_msg {
 	enum le_audio_evt_type event;
 	struct bt_conn *conn;
+	enum bt_audio_dir dir;
 };
 
 struct sdu_ref_msg {
