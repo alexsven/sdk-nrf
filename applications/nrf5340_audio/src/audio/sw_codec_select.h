@@ -48,12 +48,14 @@ struct sw_codec_encoder {
 	int bitrate;
 	uint8_t num_ch;
 	enum audio_channel audio_ch; /* Only used if channel mode is mono */
+	int sample_rate_hz;
 };
 
 struct sw_codec_decoder {
 	bool enabled;
 	uint8_t num_ch;
 	enum audio_channel audio_ch; /* Only used if channel mode is mono */
+	int sample_rate_hz;
 };
 
 /** @brief  Sw_codec configuration structure
