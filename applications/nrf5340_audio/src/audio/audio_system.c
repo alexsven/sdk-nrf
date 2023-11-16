@@ -93,8 +93,8 @@ static void audio_headset_configure(void)
 	}
 #endif /* (CONFIG_STREAM_BIDIRECTIONAL) */
 
-	sw_codec_cfg.decoder.num_ch = 1;
-	sw_codec_cfg.decoder.channel_mode = SW_CODEC_MONO;
+	sw_codec_cfg.decoder.num_ch = 2;
+	sw_codec_cfg.decoder.channel_mode = SW_CODEC_STEREO;
 
 	if (IS_ENABLED(CONFIG_SD_CARD_PLAYBACK)) {
 		/* Need an extra decoder channel to decode data from SD card */
@@ -358,8 +358,8 @@ void audio_system_start(void)
 	ret = audio_usb_start(&fifo_tx, &fifo_rx);
 	ERR_CHK(ret);
 #else
-	ret = hw_codec_default_conf_enable();
-	ERR_CHK(ret);
+	// ret = hw_codec_default_conf_enable();
+	// ERR_CHK(ret);
 
 	ret = audio_datapath_start(&fifo_rx);
 	ERR_CHK(ret);
@@ -380,8 +380,8 @@ void audio_system_stop(void)
 #if ((CONFIG_AUDIO_DEV == GATEWAY) && CONFIG_AUDIO_SOURCE_USB)
 	audio_usb_stop();
 #else
-	ret = hw_codec_soft_reset();
-	ERR_CHK(ret);
+	// ret = hw_codec_soft_reset();
+	// ERR_CHK(ret);
 
 	ret = audio_datapath_stop();
 	ERR_CHK(ret);
@@ -435,11 +435,11 @@ int audio_system_init(void)
 		return ret;
 	}
 
-	ret = hw_codec_init();
-	if (ret) {
-		LOG_ERR("Failed to initialize HW codec: %d", ret);
-		return ret;
-	}
+	// ret = hw_codec_init();
+	// if (ret) {
+	// 	LOG_ERR("Failed to initialize HW codec: %d", ret);
+	// 	return ret;
+//}
 #endif
 	return 0;
 }

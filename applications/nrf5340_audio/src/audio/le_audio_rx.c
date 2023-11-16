@@ -23,6 +23,7 @@ struct ble_iso_data {
 	bool bad_frame;
 	uint32_t sdu_ref;
 	uint32_t recv_frame_ts;
+	uint8_t channel;
 } __packed;
 
 struct rx_stats {
@@ -48,6 +49,10 @@ void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, boo
 	struct ble_iso_data *iso_received = NULL;
 	static struct rx_stats rx_stats[AUDIO_CH_NUM];
 
+	static uint8_t temp_data[240] = {0};
+	static bool left_recv;
+	static bool right_recv;
+
 	if (!initialized) {
 		ERR_CHK_MSG(-EPERM, "Data received but le_audio_rx is not initialized");
 	}
@@ -61,6 +66,7 @@ void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, boo
 		/* A valid frame should always be equal to desired_data_size, set bad_frame
 		 * if that is not the case
 		 */
+		// LOG_WRN("Bad %s", ((channel_index == AUDIO_CH_L) ? "Left" : "Right"));
 		bad_frame = true;
 		rx_stats[channel_index].data_size_mismatch_cnt++;
 	}
@@ -85,6 +91,15 @@ void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, boo
 	if (channel_index != AUDIO_CH_L && (CONFIG_AUDIO_DEV == GATEWAY)) {
 		/* Only left channel RX data in use on gateway */
 		return;
+	}
+
+	if (channel_index == AUDIO_CH_L) {
+		memcpy(temp_data, p_data, data_size);
+		left_recv = true;
+		return;
+	} else if (channel_index == AUDIO_CH_R) {
+		memcpy(&temp_data[120], p_data, data_size);
+		right_recv = true;
 	}
 
 	ret = data_fifo_num_used_get(&ble_fifo_rx, &blocks_alloced_num, &blocks_locked_num);
@@ -113,10 +128,13 @@ void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, boo
 		return;
 	}
 
-	memcpy(iso_received->data, p_data, data_size);
+	memcpy(iso_received->data, temp_data, data_size * 2);
+	left_recv = false;
+	right_recv = false;
 
+	// LOG_WRN("Locking %s sdu_ref", ((channel_index == AUDIO_CH_L) ? "Left" : "Right"));
 	iso_received->bad_frame = bad_frame;
-	iso_received->data_size = data_size;
+	iso_received->data_size = data_size * 2;
 	iso_received->sdu_ref = sdu_ref;
 	iso_received->recv_frame_ts = recv_frame_ts;
 
