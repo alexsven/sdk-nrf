@@ -28,10 +28,10 @@
  * Maximum size for the internal state buffers.
  *
  * The internal state buffer must for each context fulfill the following equations:
- * 	Interpolation:
- * 		number of filter taps + block size - 1
- * 	Decimation:
- * 		(number of filter taps / conversion ratio) + block size - 1
+ *	Interpolation:
+ *		number of filter taps + block size - 1
+ *	Decimation:
+ *		(number of filter taps / conversion ratio) + block size - 1
  *
  * The equation for interpolation is used as size as this gives the largest number.
  */
@@ -100,13 +100,13 @@ struct sample_rate_converter_ctx {
  *		when needed to meet this criteria.
  *
  * @param[in,out]	ctx			Pointer to sample rate conversion context
- * @param[in]	 	filter 			Filter type to be used for the conversion
- * @param[in]		input 			Pointer to samples to process
- * @param[in]		input_size 		Size of the input in bytes
- * @param[in] 		input_sample_rate 	Sample rate of the input bytes
- * @param[out]		output 			Array that output will be written
- * @param[in] 		output_size 		Number of bytes requested as output
- * @param[in] 		output_sample_rate	Sample rate of output
+ * @param[in]		filter			Filter type to be used for the conversion
+ * @param[in]		input			Pointer to samples to process
+ * @param[in]		input_size		Size of the input in bytes
+ * @param[in]		input_sample_rate	Sample rate of the input bytes
+ * @param[out]		output			Array that output will be written
+ * @param[in]		output_size		Number of bytes requested as output
+ * @param[in]		output_sample_rate	Sample rate of output
  *
  * @retval 0 On success
  * @retval -EINVAL Invalid parameters for sample rate conversion

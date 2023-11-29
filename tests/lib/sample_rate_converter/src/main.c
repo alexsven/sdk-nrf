@@ -120,7 +120,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_16bit)
 
 	/* Verify output bytes, expect two samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert_true(output_samples[i] < input_samples[(i / (int)2)],
+		zassert_true(output_samples[i] < input_samples[(i / 2)],
 			     "Output samples is not smaller than corresponding input");
 	}
 }
@@ -143,7 +143,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 	size_t output_size = num_samples * conversion_ratio;
 	uint16_t output_samples[output_size];
 
-	// First run
+	/* First run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_one, num_samples * sizeof(uint16_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
@@ -162,11 +162,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_one[(i / (int)3)],
+		zassert(output_samples[i] < input_one[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Second run
+	/* Second run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_two, num_samples * sizeof(uint16_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
@@ -188,11 +188,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_two[(i / (int)3)],
+		zassert(output_samples[i] < input_two[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Third run
+	/* Third run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_three, num_samples * sizeof(uint16_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
@@ -214,11 +214,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_three[(i / (int)3)],
+		zassert(output_samples[i] < input_three[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Fourth run
+	/* Fourth run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_four, num_samples * sizeof(uint16_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
@@ -237,7 +237,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_four[(i / (int)3)],
+		zassert(output_samples[i] < input_four[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 }
@@ -348,7 +348,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_32bit)
 
 	/* Verify output bytes, expected two samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert_true(output_samples[i] < input_samples[(i / (int)2)], "not correct");
+		zassert_true(output_samples[i] < input_samples[(i / 2)], "not correct");
 	}
 }
 
@@ -370,7 +370,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 	size_t output_size = num_samples * conversion_ratio;
 	int32_t output_samples[output_size];
 
-	// First run
+	/* First run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_one, num_samples * sizeof(uint32_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
@@ -390,11 +390,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_one[(i / (int)3)],
+		zassert(output_samples[i] < input_one[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Second run
+	/* Second run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_two, num_samples * sizeof(uint32_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
@@ -416,11 +416,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_two[(i / (int)3)],
+		zassert(output_samples[i] < input_two[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Third run
+	/* Third run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_three, num_samples * sizeof(uint32_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
@@ -442,11 +442,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_three[(i / (int)3)],
+		zassert(output_samples[i] < input_three[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
-	// Fourth run
+	/* Fourth run */
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_four, num_samples * sizeof(uint32_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
@@ -465,7 +465,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 
 	/* Verify output bytes, expected three samples in output per input */
 	for (int i = 0; i < output_size; i++) {
-		zassert(output_samples[i] < input_four[(i / (int)3)],
+		zassert(output_samples[i] < input_four[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 }
@@ -517,7 +517,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 	uint32_t input_rate;
 	uint32_t output_rate;
 
-	// Downsampling from NOT 48000
+	/* Downsampling from NOT 48000 */
 	input_rate = 24000;
 	output_rate = 16000;
 
@@ -527,7 +527,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	zassert_equal(ret, -EINVAL);
 
-	// Downsampling to invalid rate
+	/* Downsampling to invalid rate */
 	input_rate = 48000;
 	output_rate = 20000;
 
@@ -537,7 +537,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	zassert_equal(ret, -EINVAL);
 
-	// Upsampling to NOT 48000
+	/* Upsampling to NOT 48000 */
 	input_rate = 16000;
 	output_rate = 24000;
 
@@ -547,7 +547,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	zassert_equal(ret, -EINVAL);
 
-	// Upsampling to invalid rate
+	/* Upsampling to invalid rate */
 	input_rate = 24000;
 	output_rate = 30000;
 
