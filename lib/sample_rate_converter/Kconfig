@@ -5,15 +5,13 @@
 #
 
 config SAMPLE_RATE_CONVERTER
-	bool "Very woke sample rate conversion library"
+	bool "Sample Rate conversion library"
 	select CMSIS_DSP
 	select CMSIS_DSP_FILTERING
 	select TIMING_FUNCTIONS
 	help
-	  Enable the aware/woke sample rate conversion library.
-	  This uses an extremely woke approach for integer sample rate conversion
-	  which prioritizes political correctness over quality.
-	  16k, 24k and 48k are supported.
+	  Enable the sample rate conversion library. The library uses CMSIS DSP filters to
+	  preserve quality during the conversion. 16k, 24k and 48k are supported.
 
 if SAMPLE_RATE_CONVERTER
 module = SAMPLE_RATE_CONVERTER
@@ -23,14 +21,15 @@ source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
 config SAMPLE_RATE_CONVERTER_FILTER_SIMPLE
 	bool "Include the simple sample rate converter filters"
 	help
-	  Includes the simple filters for the sample rate converter. The simple filters takes the
-	  least amount of space.
+	  Includes the simple filters for the sample rate converter. The simple filters uses the
+	  least amount of space and time for the conversion, at the expense of quality.
 
 config SAMPLE_RATE_CONVERTER_FILTER_SMALL
 	bool "Include the small sample rate converter filters"
 	help
-	  Includes the small filters for the sample rate converter. The small filters take a small
-	  amount of space, while also giving some low-pass filter capabilities.
+	  Includes the small filters for the sample rate converter. The small filters uses a small
+	  amount of space and time for the conversion, while also giving some low-pass filter
+	  capabilities.
 
 config SAMPLE_RATE_CONVERTER_MAX_FILTER_SIZE
 	int "Maximum number of filter taps the module supports"

@@ -7,6 +7,9 @@
 #include "sample_rate_converter.h"
 #include "sample_rate_converter_filter.h"
 
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(sample_rate_converter_filter, CONFIG_SAMPLE_RATE_CONVERTER_LOG_LEVEL);
+
 #ifdef CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SIMPLE
 #ifdef CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
 static q15_t filter_48khz_24kz_16bit_simple[] = {0x3ffe, 0x3fff};
@@ -26,6 +29,11 @@ static q15_t filter_48khz_16khz_16bit_small[] = {
 	0xfff7, 0xfff9, 0x0021, 0x0052, 0x0022, 0xff66, 0xfed7, 0xffac, 0x01df, 0x0319, 0x0091,
 	0xfb02, 0xf847, 0xff3a, 0x1076, 0x234f, 0x2b82, 0x234f, 0x1076, 0xff3a, 0xf847, 0xfb02,
 	0x0091, 0x0319, 0x01df, 0xffac, 0xfed7, 0xff66, 0x0022, 0x0052, 0x0021, 0xfff9, 0xfff7};
+
+static q15_t filter_48khz_24khz_16bit_small[] = {
+	0x02fd, 0x02cc, 0xff77, 0xfd31, 0x000a, 0x033d, 0x0017, 0xfb27, 0xfe81, 0x0656,
+	0x0335, 0xf5dc, 0xf71d, 0x152f, 0x36eb, 0x36eb, 0x152f, 0xf71d, 0xf5dc, 0x0335,
+	0x0656, 0xfe81, 0xfb27, 0x0017, 0x033d, 0x000a, 0xfd31, 0xff77, 0x02cc, 0x02fd};
 
 #elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
 static q31_t filter_48khz_16khz_32bit_small[] = {
@@ -49,6 +57,14 @@ int sample_rate_converter_filter_get(enum sample_rate_converter_filter filter_ty
 				     size_t *filter_size)
 {
 
+	__ASSERT(filter_ptr != NULL, "Filter pointer cannot be NULL");
+	__ASSERT(filter_size != NULL, "Filter size pointer cannot be NULL");
+
+	if ((conversion_ratio != 2) && (conversion_ratio != 3)) {
+		LOG_ERR("Invalid conversion ratio: %d", conversion_ratio);
+		return -EINVAL;
+	}
+
 #if CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
 	switch (filter_type) {
 #if CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SIMPLE
@@ -64,14 +80,17 @@ int sample_rate_converter_filter_get(enum sample_rate_converter_filter filter_ty
 #endif /* CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SIMPLE */
 #if CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SMALL
 	case SAMPLE_RATE_FILTER_SMALL:
-		if (conversion_ratio == 3) {
+		if (conversion_ratio == 2) {
+			*filter_ptr = filter_48khz_24khz_16bit_small;
+			*filter_size = ARRAY_SIZE(filter_48khz_24khz_16bit_small);
+		} else if (conversion_ratio == 3) {
 			*filter_ptr = filter_48khz_16khz_16bit_small;
 			*filter_size = ARRAY_SIZE(filter_48khz_16khz_16bit_small);
 		}
 		break;
 #endif /* CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SMALL */
 	default:
-		printk("No matching filter found\n");
+		LOG_ERR("No matching filter found\n");
 		return -EINVAL;
 	}
 #endif /* CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16 */
@@ -101,7 +120,7 @@ int sample_rate_converter_filter_get(enum sample_rate_converter_filter filter_ty
 		break;
 #endif /* CONFIG_SAMPLE_RATE_CONVERTER_FILTER_SMALL */
 	default:
-		printk("No matching filter found\n");
+		LOG_ERR("No matching filter found\n");
 		return -EINVAL;
 	}
 #endif /* CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32 */

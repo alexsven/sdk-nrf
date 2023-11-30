@@ -4,26 +4,35 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include <errno.h>
-#include <stdbool.h>
 #include "sample_rate_converter.h"
 #include "sample_rate_converter_filter.h"
+
+#include <errno.h>
+#include <stdbool.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(sample_rate_converter, CONFIG_SAMPLE_RATE_CONVERTER_LOG_LEVEL);
 
-#ifdef CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
-/* The input buffer must be able to store maximum two extra samples to meet filter requirements */
-#define INTERNAL_INPUT_BUF_SIZE	 (CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE + 2) * sizeof(uint16_t)
-#define INTERNAL_OUTPUT_BUF_SIZE CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE * sizeof(uint16_t)
-#elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
-/* The input buffer must be able to store maximum two extra samples to meet filter requirements */
-#define INTERNAL_INPUT_BUF_SIZE	 (CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE + 2) * sizeof(uint32_t)
-#define INTERNAL_OUTPUT_BUF_SIZE CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE * sizeof(uint32_t)
-#endif
+/**
+ * The input buffer must be able to store maximum two samples in addition to the block size to meet
+ * filter requirements.
+ */
+#define SAMPLE_RATE_CONVERTER_INPUT_BUF_NUMBER_SAMPLES
+#define INTERNAL_INPUT_BUF_NUMBER_SAMPLES                                                          \
+	CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE +                                                  \
+		SAMPLE_RATE_CONVERTER_INPUT_BUFFER_NUMBER_OVERFLOW_SAMPLES
 
-static uint8_t internal_input_buf[INTERNAL_INPUT_BUF_SIZE];
-static uint8_t internal_output_buf[INTERNAL_OUTPUT_BUF_SIZE];
+#ifdef CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
+#define SAMPLE_RATE_CONVERTER_INTERNAL_INPUT_BUF_SIZE                                              \
+	INTERNAL_INPUT_BUF_NUMBER_SAMPLES * sizeof(uint16_t)
+#define SAMLPE_RATE_CONVERTER_INTERNAL_OUTPUT_BUF_SIZE                                             \
+	(CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE * sizeof(uint16_t))
+#elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
+#define SAMPLE_RATE_CONVERTER_INTERNAL_INPUT_BUF_SIZE                                              \
+	INTERNAL_INPUT_BUF_NUMBER_SAMPLES * sizeof(uint32_t)
+#define SAMLPE_RATE_CONVERTER_INTERNAL_OUTPUT_BUF_SIZE                                             \
+	(CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE * sizeof(uint32_t))
+#endif
 
 static int validate_sample_rates(uint32_t input_sample_rate, uint32_t output_sample_rate)
 {
@@ -56,7 +65,7 @@ static int validate_sample_rates(uint32_t input_sample_rate, uint32_t output_sam
 	return 0;
 }
 
-static bool is_upsampling(uint32_t input_rate, uint32_t output_rate)
+static inline bool is_upsampling(uint32_t input_rate, uint32_t output_rate)
 {
 	return input_rate < output_rate;
 }
@@ -66,14 +75,15 @@ static bool is_upsampling(uint32_t input_rate, uint32_t output_rate)
  * fulfill the requirement for the filter that the number of input bytes must be divisible by the
  * conversion factor. This function returns true when this is the case.
  */
-static bool conversion_needs_buffering(struct sample_rate_converter_ctx *ctx,
-				       uint8_t conversion_ratio)
+static inline bool conversion_needs_buffering(struct sample_rate_converter_ctx *ctx,
+					      uint8_t conversion_ratio)
 {
 	return (is_upsampling(ctx->input_sample_rate, ctx->output_sample_rate) &&
 		(conversion_ratio == 3));
 }
 
-static uint8_t calculate_conversion_ratio(uint32_t input_sample_rate, uint32_t output_sample_rate)
+static inline uint8_t calculate_conversion_ratio(uint32_t input_sample_rate,
+						 uint32_t output_sample_rate)
 {
 	if (input_sample_rate > output_sample_rate) {
 		return input_sample_rate / output_sample_rate;
@@ -83,30 +93,33 @@ static uint8_t calculate_conversion_ratio(uint32_t input_sample_rate, uint32_t o
 }
 
 /**
- * @brief Initializes the sample rate converter context
+ * @brief Initializes the sample rate converter context.
  *
  * @details Validates and sets all sample rate conversion parameters for the context. If buffering
  *	    is needed for the conversion, the input buffer will be padded with two samples to
  *	    ensure there will always be enough samples for a valid conversion.
  *
- * @param[in,out]	ctx			Pointer to the sample rate conversion context
- * @param[in]		input_sample_rate	Sample rate of the input samples
- * @param[in]		output_sample_rate	Sample rate of the output samples
- * @param[in]		filter			Filter type to use in the conversion
+ * @param[in,out]	ctx			Pointer to the sample rate conversion context.
+ * @param[in]		input_sample_rate	Sample rate of the input samples.
+ * @param[in]		output_sample_rate	Sample rate of the output samples.
+ * @param[in]		filter			Filter type to use in the conversion.
  *
- * @retval 0 On success
- * @retval -EINVAL Invalid parameters used to initialize the conversion
- * @retval Other errno codes from CMSIS DSP library
+ * @retval 0 On success.
+ * @retval -EINVAL Invalid parameters used to initialize the conversion.
+ * @retval Other errno codes from CMSIS DSP library.
  */
-static int sample_rate_converter_init(struct sample_rate_converter_ctx *ctx,
-				      uint32_t input_sample_rate, uint32_t output_sample_rate,
-				      enum sample_rate_converter_filter filter)
+static int sample_rate_converter_reconfigure(struct sample_rate_converter_ctx *ctx,
+					     uint32_t input_sample_rate,
+					     uint32_t output_sample_rate,
+					     enum sample_rate_converter_filter filter)
 {
 	int ret;
 	arm_status arm_err;
 	uint8_t conversion_ratio;
 	uint8_t *filter_coeffs;
 	size_t filter_size;
+
+	__ASSERT(ctx != NULL, "Context cannot be NULL");
 
 	ret = validate_sample_rates(input_sample_rate, output_sample_rate);
 	if (ret) {
@@ -131,11 +144,15 @@ static int sample_rate_converter_init(struct sample_rate_converter_ctx *ctx,
 	}
 
 	if (conversion_needs_buffering(ctx, conversion_ratio)) {
-		LOG_DBG("Conversion needs buffering, start with two extra input samples");
+		LOG_DBG("Conversion needs buffering, start with the input buffer filled");
 #ifdef CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
-		ctx->input_buf.bytes_in_buf = 2 * sizeof(uint16_t);
+		ctx->input_buf.bytes_in_buf =
+			SAMPLE_RATE_CONVERTER_INPUT_BUFFER_NUMBER_OVERFLOW_SAMPLES *
+			sizeof(uint16_t);
 #elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
-		ctx->input_buf.bytes_in_buf = 2 * sizeof(uint32_t);
+		ctx->input_buf.bytes_in_buf =
+			SAMPLE_RATE_CONVERTER_INPUT_BUFFER_NUMBER_OVERFLOW_SAMPLES *
+			sizeof(uint32_t);
 #endif
 		memset(ctx->input_buf.buf, 0, ctx->input_buf.bytes_in_buf);
 	} else {
@@ -152,20 +169,12 @@ static int sample_rate_converter_init(struct sample_rate_converter_ctx *ctx,
 						       filter_size, (q15_t *)filter_coeffs,
 						       ctx->state_buf_15,
 						       CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE);
-		if (arm_err != ARM_MATH_SUCCESS) {
-			LOG_ERR("Failed to initialize interpolator (%d)", arm_err);
-			return arm_err;
-		}
 
 	} else {
 		arm_err = arm_fir_decimate_init_q15(&ctx->fir_decimate_q15, filter_size,
 						    conversion_ratio, (q15_t *)filter_coeffs,
 						    ctx->state_buf_15,
 						    CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE);
-		if (arm_err != ARM_MATH_SUCCESS) {
-			LOG_ERR("Failed to initialize decimator (%d)", arm_err);
-			return arm_err;
-		}
 	}
 #elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
 	if (is_upsampling(ctx->input_sample_rate, ctx->output_sample_rate)) {
@@ -173,27 +182,37 @@ static int sample_rate_converter_init(struct sample_rate_converter_ctx *ctx,
 						       filter_size, (q31_t *)filter_coeffs,
 						       ctx->state_buf_31,
 						       CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE);
-		if (arm_err != ARM_MATH_SUCCESS) {
-			LOG_ERR("Failed to initialize interpolator (%d)", arm_err);
-			return arm_err;
-		}
-
 	} else {
 		arm_err = arm_fir_decimate_init_q31(&ctx->fir_decimate_q31, filter_size,
 						    conversion_ratio, (q31_t *)filter_coeffs,
 						    ctx->state_buf_31,
 						    CONFIG_SAMPLE_RATE_CONVERTER_BLOCK_SIZE);
-		if (arm_err != ARM_MATH_SUCCESS) {
-			LOG_ERR("Failed to initialize decimator (%d)", arm_err);
-			return arm_err;
-		}
 	}
 #endif
+	if (arm_err == ARM_MATH_LENGTH_ERROR) {
+		LOG_ERR("Filter size is not a multiple of conversion ratio");
+		return -EINVAL;
+	} else if (arm_err != ARM_MATH_SUCCESS) {
+		LOG_ERR("Unknown error during interpolator/decimator initialization (%d)", arm_err);
+		return -EINVAL;
+	}
 
 	LOG_DBG("Sample rate converter initialized. Input sample rate: %d, Output sample rate: %d, "
 		"conversion ratio: %d, filter type: %d",
 		ctx->input_sample_rate, ctx->output_sample_rate, conversion_ratio,
 		ctx->filter_type);
+	return 0;
+}
+
+int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx)
+{
+	if (ctx == NULL) {
+		LOG_ERR("Context cannot be NULL");
+		return -EINVAL;
+	}
+
+	memset(ctx, 0, sizeof(struct sample_rate_converter_ctx));
+
 	return 0;
 }
 
@@ -209,6 +228,9 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 	size_t bytes_produced;
 	size_t samples_to_process;
 
+	uint8_t internal_input_buf[SAMPLE_RATE_CONVERTER_INTERNAL_INPUT_BUF_SIZE];
+	uint8_t internal_output_buf[SAMLPE_RATE_CONVERTER_INTERNAL_OUTPUT_BUF_SIZE];
+
 #if CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
 	size_t bytes_per_sample = sizeof(uint16_t);
 #elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
@@ -217,11 +239,16 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 
 	size_t samples_in = input_size / bytes_per_sample;
 
+	if ((ctx == NULL) || (input == NULL) || (output == NULL)) {
+		LOG_ERR("Null pointer received");
+		return -EINVAL;
+	}
+
 	if ((ctx->input_sample_rate != input_sample_rate) ||
 	    (ctx->output_sample_rate != output_sample_rate) || (ctx->filter_type != filter)) {
 		LOG_DBG("State has changed, re-initializing filter");
-		ret = sample_rate_converter_init(ctx, input_sample_rate, output_sample_rate,
-						 filter);
+		ret = sample_rate_converter_reconfigure(ctx, input_sample_rate, output_sample_rate,
+							filter);
 		if (ret) {
 			LOG_ERR("Failed to initialize converter (%d)", ret);
 			return ret;
@@ -243,8 +270,7 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 			size_t extra_samples = conversion_ratio - (samples_in % conversion_ratio);
 
 			LOG_DBG("Using %d extra samples from input buffer", extra_samples);
-			samples_to_process =
-				samples_in + (conversion_ratio - (samples_in % conversion_ratio));
+			samples_to_process = samples_in + extra_samples;
 		} else {
 			size_t extra_samples = (samples_in % conversion_ratio);
 

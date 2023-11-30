@@ -12,7 +12,7 @@ struct sample_rate_converter_ctx conv_ctx;
 
 static void test_setup(void *f)
 {
-	memset(&conv_ctx, 0, sizeof(struct sample_rate_converter_ctx));
+	sample_rate_converter_open(&conv_ctx);
 }
 
 #ifdef CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_16
