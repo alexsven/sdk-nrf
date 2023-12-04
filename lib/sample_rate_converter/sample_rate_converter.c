@@ -219,13 +219,12 @@ int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx)
 int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 				  enum sample_rate_converter_filter filter, void *input,
 				  size_t input_size, uint32_t input_sample_rate, void *output,
-				  size_t output_size, uint32_t output_sample_rate)
+				  size_t *output_size, uint32_t output_sample_rate)
 {
 	int ret;
 	uint8_t *read_ptr;
 	uint8_t *write_ptr;
 	uint8_t conversion_ratio;
-	size_t bytes_produced;
 	size_t samples_to_process;
 
 	uint8_t internal_input_buf[SAMPLE_RATE_CONVERTER_INTERNAL_INPUT_BUF_SIZE];
@@ -290,21 +289,21 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 	if (is_upsampling(ctx->input_sample_rate, ctx->output_sample_rate)) {
 		arm_fir_interpolate_q15(&ctx->fir_interpolate_q15, (q15_t *)read_ptr,
 					(q15_t *)write_ptr, samples_to_process);
-		bytes_produced = samples_to_process * conversion_ratio * bytes_per_sample;
+		*output_size = input_size * conversion_ratio;
 	} else {
 		arm_fir_decimate_q15(&ctx->fir_decimate_q15, (q15_t *)read_ptr, (q15_t *)write_ptr,
 				     samples_to_process);
-		bytes_produced = (samples_to_process / conversion_ratio) * bytes_per_sample;
+		*output_size = input_size / conversion_ratio;
 	}
 #elif CONFIG_SAMPLE_RATE_CONVERTER_BIT_DEPTH_32
 	if (is_upsampling(ctx->input_sample_rate, ctx->output_sample_rate)) {
 		arm_fir_interpolate_q31(&ctx->fir_interpolate_q31, (q31_t *)read_ptr,
 					(q31_t *)write_ptr, samples_to_process);
-		bytes_produced = samples_to_process * conversion_ratio * bytes_per_sample;
+		*output_size = input_size * conversion_ratio;
 	} else {
 		arm_fir_decimate_q31(&ctx->fir_decimate_q31, (q31_t *)read_ptr, (q31_t *)write_ptr,
 				     samples_to_process);
-		bytes_produced = (samples_to_process / conversion_ratio) * bytes_per_sample;
+		*output_size = input_size / conversion_ratio;
 	}
 #endif
 
@@ -329,7 +328,7 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 		LOG_DBG("%d overflow samples has been used", overflow_samples_used);
 	}
 
-	int bytes_to_write = bytes_produced;
+	int bytes_to_write = samples_to_process * conversion_ratio * bytes_per_sample;
 	uint8_t *ringbuf_write_ptr = (uint8_t *)internal_output_buf;
 
 	LOG_DBG("Writing %d bytes to output buffer", bytes_to_write);
@@ -354,7 +353,7 @@ int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 		bytes_to_write -= ringbuf_write_size;
 	}
 
-	int bytes_to_read = output_size;
+	int bytes_to_read = input_size * conversion_ratio;
 	uint8_t *ringbuf_output_ptr = (uint8_t *)output;
 
 	LOG_DBG("Reading %d bytes from output_buffer", bytes_to_read);

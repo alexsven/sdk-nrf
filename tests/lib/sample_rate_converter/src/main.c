@@ -27,14 +27,15 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_24khz_16bit)
 	uint16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / conversion_ratio;
-	uint16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / conversion_ratio;
+	uint16_t output_samples[expected_output_samples];
 
 	enum sample_rate_converter_filter filter = SAMPLE_RATE_FILTER_SIMPLE;
+	size_t output_size;
 
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_samples, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -47,8 +48,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_24khz_16bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected two input samples per output sample */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_within(output_samples[i], input_samples[i * 2], 550);
 	}
 }
@@ -64,13 +68,15 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_16khz_16bit)
 	int16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				   7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / conversion_ratio;
-	int16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / conversion_ratio;
+	int16_t output_samples[expected_output_samples];
 
 	enum sample_rate_converter_filter filter = SAMPLE_RATE_FILTER_SIMPLE;
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_samples, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	size_t output_size;
+
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -83,8 +89,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_16khz_16bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three input samples per output sample */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_within(output_samples[i], input_samples[i * 3], 1100);
 	}
 }
@@ -100,12 +109,13 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_16bit)
 
 	uint16_t input_samples[] = {2000, 4000, 6000, 8000, 10000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples * conversion_ratio;
-	uint16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples * conversion_ratio;
+	uint16_t output_samples[expected_output_samples];
+	size_t output_size;
 
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_samples, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -118,8 +128,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_16bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expect two samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_true(output_samples[i] < input_samples[(i / 2)],
 			     "Output samples is not smaller than corresponding input");
 	}
@@ -140,13 +153,14 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 	uint16_t input_three[] = {9000, 10000, 11000, 12000};
 	uint16_t input_four[] = {13000, 14000, 15000, 16000};
 
-	size_t output_size = num_samples * conversion_ratio;
-	uint16_t output_samples[output_size];
+	size_t output_size;
+	size_t expected_output_samples = num_samples * conversion_ratio;
+	uint16_t output_samples[expected_output_samples];
 
 	/* First run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_one, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_one,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -160,16 +174,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_one[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Second run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_two, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_two,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -186,16 +203,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 	uint16_t expected_input_buf_two[] = {8000};
 	zassert_mem_equal(conv_ctx.input_buf.buf, expected_input_buf_two, 1 * sizeof(uint16_t));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_two[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Third run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_three, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_three,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -212,16 +232,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 	uint16_t expected_input_buf_three[] = {11000, 12000};
 	zassert_mem_equal(conv_ctx.input_buf.buf, expected_input_buf_three, 2 * sizeof(uint16_t));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_three[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Fourth run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_four, num_samples * sizeof(uint16_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint16_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_four,
+					    num_samples * sizeof(uint16_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -235,8 +258,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_16bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint16_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_four[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
@@ -255,14 +281,15 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_24khz_32bit)
 	uint32_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / conversion_ratio;
-	uint32_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / conversion_ratio;
+	uint32_t output_samples[expected_output_samples];
 
 	enum sample_rate_converter_filter filter = SAMPLE_RATE_FILTER_SIMPLE;
+	size_t output_size;
 
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_samples, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -275,8 +302,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_24khz_32bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected two input samples per output sample */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_within(output_samples[i], input_samples[i * 2], 550);
 	}
 }
@@ -292,10 +322,12 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_16khz_32bit)
 	int32_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				   7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / conversion_ratio;
-	int32_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / conversion_ratio;
+	int32_t output_samples[expected_output_samples];
 
 	enum sample_rate_converter_filter filter = SAMPLE_RATE_FILTER_SIMPLE;
+	size_t output_size;
+
 	ret = sample_rate_converter_process(
 		&conv_ctx, filter, input_samples, num_samples * sizeof(uint32_t), input_sample_rate,
 		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
@@ -311,8 +343,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_decimate_16khz_32bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three input samples per output sample */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_within(output_samples[i], input_samples[i * 3], 1100);
 	}
 }
@@ -328,12 +363,14 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_32bit)
 
 	uint32_t input_samples[] = {2000, 4000, 6000, 8000, 10000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples * conversion_ratio;
-	uint32_t output_samples[output_size];
+	size_t expected_output_samples = num_samples * conversion_ratio;
+	uint32_t output_samples[expected_output_samples];
 
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_samples, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	size_t output_size;
+
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -346,8 +383,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_24khz_32bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected two samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert_true(output_samples[i] < input_samples[(i / 2)], "not correct");
 	}
 }
@@ -367,13 +407,14 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 	int32_t input_three[] = {9000, 10000, 11000, 12000};
 	int32_t input_four[] = {13000, 14000, 15000, 16000};
 
-	size_t output_size = num_samples * conversion_ratio;
-	int32_t output_samples[output_size];
+	size_t output_size;
+	size_t expected_output_samples = num_samples * conversion_ratio;
+	int32_t output_samples[expected_output_samples];
 
 	/* First run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_one, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_one,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -388,16 +429,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_one[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Second run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_two, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_two,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -414,16 +458,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 	uint32_t expected_input_buf_two[] = {8000};
 	zassert_mem_equal(conv_ctx.input_buf.buf, expected_input_buf_two, 1 * sizeof(uint32_t));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_two[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Third run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_three, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_three,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -440,16 +487,19 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 	uint32_t expected_input_buf_three[] = {11000, 12000};
 	zassert_mem_equal(conv_ctx.input_buf.buf, expected_input_buf_three, 2 * sizeof(uint32_t));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_three[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
 
 	/* Fourth run */
-	ret = sample_rate_converter_process(
-		&conv_ctx, filter, input_four, num_samples * sizeof(uint32_t), input_sample_rate,
-		output_samples, output_size * sizeof(uint32_t), output_sample_rate);
+	ret = sample_rate_converter_process(&conv_ctx, filter, input_four,
+					    num_samples * sizeof(uint32_t), input_sample_rate,
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,
@@ -463,8 +513,11 @@ ZTEST(suite_sample_rate_converter, test_init_valid_interpolate_16khz_32bit)
 		      "Number of bytes in output ringbuffer not as expected %d",
 		      ring_buf_size_get(&conv_ctx.output_ringbuf));
 
+	zassert_equal(output_size, expected_output_samples * sizeof(uint32_t),
+		      "Output size was not as expected (%d)", output_size);
+
 	/* Verify output bytes, expected three samples in output per input */
-	for (int i = 0; i < output_size; i++) {
+	for (int i = 0; i < expected_output_samples; i++) {
 		zassert(output_samples[i] < input_four[(i / 3)],
 			"Output samples is not smaller than corresponding input");
 	}
@@ -479,23 +532,24 @@ ZTEST(suite_sample_rate_converter, test_init_valid_sample_rates_changed)
 
 	uint32_t original_input_rate = 48000;
 	uint32_t original_output_rate = 16000;
-	uint32_t original_conversion_ratio = original_input_rate / original_output_rate;
 
 	uint32_t new_input_rate = 16000;
 	uint32_t new_output_rate = 48000;
+	uint32_t new_conversion_ratio = new_output_rate / new_input_rate;
 
 	uint16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / original_conversion_ratio;
-	uint16_t output_bytes[output_size];
+	size_t expected_output_samples = num_samples * new_conversion_ratio;
+	uint16_t output_bytes[expected_output_samples];
+	size_t output_size;
 
 	conv_ctx.input_sample_rate = original_input_rate;
 	conv_ctx.output_sample_rate = original_output_rate;
 
 	ret = sample_rate_converter_process(&conv_ctx, filter, input_samples,
 					    num_samples * sizeof(uint16_t), new_input_rate,
-					    output_bytes, output_size, new_output_rate);
+					    output_bytes, &output_size, new_output_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, new_input_rate,
@@ -511,8 +565,9 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 	uint16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / 3;
-	uint16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / 3;
+	uint16_t output_samples[expected_output_samples];
+	size_t output_size;
 
 	uint32_t input_rate;
 	uint32_t output_rate;
@@ -523,7 +578,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	ret = sample_rate_converter_process(&conv_ctx, SAMPLE_RATE_FILTER_SIMPLE, input_samples,
 					    num_samples * sizeof(uint16_t), input_rate,
-					    output_samples, output_size, output_rate);
+					    output_samples, &output_size, output_rate);
 
 	zassert_equal(ret, -EINVAL);
 
@@ -533,7 +588,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	ret = sample_rate_converter_process(&conv_ctx, SAMPLE_RATE_FILTER_SIMPLE, input_samples,
 					    num_samples * sizeof(uint16_t), input_rate,
-					    output_samples, output_size, output_rate);
+					    output_samples, &output_size, output_rate);
 
 	zassert_equal(ret, -EINVAL);
 
@@ -543,7 +598,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	ret = sample_rate_converter_process(&conv_ctx, SAMPLE_RATE_FILTER_SIMPLE, input_samples,
 					    num_samples * sizeof(uint16_t), input_rate,
-					    output_samples, output_size, output_rate);
+					    output_samples, &output_size, output_rate);
 
 	zassert_equal(ret, -EINVAL);
 
@@ -553,7 +608,7 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates)
 
 	ret = sample_rate_converter_process(&conv_ctx, SAMPLE_RATE_FILTER_SIMPLE, input_samples,
 					    num_samples * sizeof(uint16_t), input_rate,
-					    output_samples, output_size, output_rate);
+					    output_samples, &output_size, output_rate);
 
 	zassert_equal(ret, -EINVAL);
 }
@@ -565,14 +620,15 @@ ZTEST(suite_sample_rate_converter, test_init_invalid_sample_rates_equal)
 	uint16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / 3;
-	uint16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / 3;
+	uint16_t output_samples[expected_output_samples];
+	size_t output_size;
 
 	uint32_t sample_rate = 48000;
 
 	ret = sample_rate_converter_process(&conv_ctx, SAMPLE_RATE_FILTER_SIMPLE, input_samples,
 					    num_samples * sizeof(uint16_t), sample_rate,
-					    output_samples, output_size, sample_rate);
+					    output_samples, &output_size, sample_rate);
 
 	zassert_equal(-EINVAL, ret,
 		      "Process did not fail when input and out sample rate is the same");
@@ -585,8 +641,9 @@ ZTEST(suite_sample_rate_converter, test_init_valid_filter_changed)
 	uint16_t input_samples[] = {1000, 2000, 3000, 4000,  5000,  6000,
 				    7000, 8000, 9000, 10000, 11000, 12000};
 	size_t num_samples = ARRAY_SIZE(input_samples);
-	size_t output_size = num_samples / 3;
-	uint16_t output_samples[output_size];
+	size_t expected_output_samples = num_samples / 3;
+	uint16_t output_samples[expected_output_samples];
+	size_t output_size;
 
 	uint32_t input_sample_rate = 48000;
 	uint32_t output_sample_rate = 24000;
@@ -599,7 +656,7 @@ ZTEST(suite_sample_rate_converter, test_init_valid_filter_changed)
 
 	ret = sample_rate_converter_process(&conv_ctx, new_filter, input_samples,
 					    num_samples * sizeof(uint16_t), input_sample_rate,
-					    output_samples, output_size, output_sample_rate);
+					    output_samples, &output_size, output_sample_rate);
 
 	zassert_equal(ret, 0, "Sample rate conversion process failed");
 	zassert_equal(conv_ctx.input_sample_rate, input_sample_rate,

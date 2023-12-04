@@ -148,7 +148,7 @@ int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx);
  * @param[in]		input_size		Size of the input in bytes.
  * @param[in]		input_sample_rate	Sample rate of the input bytes.
  * @param[out]		output			Array that output will be written.
- * @param[in]		output_size		Number of bytes requested as output.
+ * @param[out]		output_size		Number of bytes written to output.
  * @param[in]		output_sample_rate	Sample rate of output.
  *
  * @retval	0	On success.
@@ -159,7 +159,7 @@ int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx);
 int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 				  enum sample_rate_converter_filter filter, void *input,
 				  size_t input_size, uint32_t input_sample_rate, void *output,
-				  size_t output_size, uint32_t output_sample_rate);
+				  size_t *output_size, uint32_t output_sample_rate);
 
 /**
  * @}
