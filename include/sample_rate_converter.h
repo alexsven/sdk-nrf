@@ -79,11 +79,20 @@ struct buf_ctx {
 	size_t bytes_in_buf;
 };
 
+enum sample_rate_converter_direction {
+	CONVERSION_DIR_UP,
+	CONVERSION_DIR_DOWN,
+};
+
 /** Context for the sample rate conversion */
 struct sample_rate_converter_ctx {
 	/* Input and out sample rate to be used for the conversion. */
 	int input_sample_rate;
 	int output_sample_rate;
+
+	/* The ratio and direction for the current conversion. */
+	uint8_t conversion_ratio;
+	enum sample_rate_converter_direction conversion_direction;
 
 	/* Filter type to be used for the conversion. */
 	enum sample_rate_converter_filter filter_type;
@@ -148,7 +157,8 @@ int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx);
  * @param[in]		input_size		Size of the input in bytes.
  * @param[in]		input_sample_rate	Sample rate of the input bytes.
  * @param[out]		output			Array that output will be written.
- * @param[out]		output_size		Number of bytes written to output.
+ * @param[in]		output_size		Size of the output array in bytes.
+ * @param[out]		output_written		Number of bytes written to output.
  * @param[in]		output_sample_rate	Sample rate of output.
  *
  * @retval	0	On success.
@@ -159,7 +169,8 @@ int sample_rate_converter_open(struct sample_rate_converter_ctx *ctx);
 int sample_rate_converter_process(struct sample_rate_converter_ctx *ctx,
 				  enum sample_rate_converter_filter filter, void *input,
 				  size_t input_size, uint32_t input_sample_rate, void *output,
-				  size_t *output_size, uint32_t output_sample_rate);
+				  size_t output_size, size_t *output_written,
+				  uint32_t output_sample_rate);
 
 /**
  * @}
