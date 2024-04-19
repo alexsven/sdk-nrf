@@ -1,0 +1,51 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+config UTF8
+	default y
+
+## ACL related configs ##
+config BT_MAX_CONN
+	default 5
+
+# Generic Audio Source - 0x0840
+config BT_DEVICE_APPEARANCE
+	default 2112
+
+config BT_MAX_PAIRED
+	default 5
+
+config BT_GATT_DYNAMIC_DB
+	default y
+
+## ISO related configs ##
+config BT_ISO_MAX_CHAN
+	default 5
+
+config BT_BAP_UNICAST_CLIENT
+	default y
+
+config BT_ISO_TX_BUF_COUNT
+	default 2
+
+config BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT
+	default 5
+
+config BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT
+	default 0
+
+config BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT
+	default 5
+
+## LC3 related configs ##
+config LC3_BITRATE
+	default BT_AUDIO_BITRATE_UNICAST_SINK
+
+config LC3_ENC_CHAN_MAX
+	default 0
+
+config LC3_DEC_CHAN_MAX
+	default 5

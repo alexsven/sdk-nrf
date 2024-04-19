@@ -68,11 +68,13 @@ int audio_system_config_set(uint32_t encoder_sample_rate_hz, uint32_t encoder_bi
  *
  * @param[in]	encoded_data		Pointer to encoded data.
  * @param[in]	encoded_data_size	Size of encoded data.
+ * @param[in]	channel			Channel of the data.
  * @param[in]	bad_frame		Indication on missed or incomplete frame.
  *
  * @return	0 on success, error otherwise.
  */
-int audio_system_decode(void const *const encoded_data, size_t encoded_data_size, bool bad_frame);
+int audio_system_decode(void const *const encoded_data, size_t encoded_data_size, uint8_t channel,
+			bool bad_frame);
 
 /**
  * @brief	Initialize and start both HW and SW audio codec.

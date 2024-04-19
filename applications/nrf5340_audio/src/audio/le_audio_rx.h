@@ -20,8 +20,7 @@
  * @return 0 if successful, error otherwise.
  */
 void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, bool bad_frame,
-			      uint32_t sdu_ref, enum audio_channel channel_index,
-			      size_t desired_data_size);
+			      uint32_t sdu_ref, uint8_t channel_index, size_t desired_data_size);
 
 /**
  * @brief Initialize the receive audio path.

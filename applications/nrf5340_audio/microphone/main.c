@@ -19,10 +19,8 @@
 #include "bt_mgmt.h"
 #include "bt_rend.h"
 #include "audio_datapath.h"
-#include "bt_content_ctrl.h"
 #include "unicast_server.h"
 #include "le_audio.h"
-#include "le_audio_rx.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, CONFIG_MAIN_LOG_LEVEL);
@@ -82,75 +80,29 @@ static void button_msg_sub_thread(void)
 
 		switch (msg.button_pin) {
 		case BUTTON_PLAY_PAUSE:
-			if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-				LOG_WRN("Play/pause not supported in walkie-talkie mode");
-				break;
-			}
-
-			if (bt_content_ctlr_media_state_playing()) {
-				ret = bt_content_ctrl_stop(NULL);
-				if (ret) {
-					LOG_WRN("Could not stop: %d", ret);
-				}
-
-			} else if (!bt_content_ctlr_media_state_playing()) {
-				ret = bt_content_ctrl_start(NULL);
-				if (ret) {
-					LOG_WRN("Could not start: %d", ret);
-				}
-
-			} else {
-				LOG_WRN("In invalid state: %d", strm_state);
-			}
+			LOG_WRN("No action specified, play/pause");
 
 			break;
 
 		case BUTTON_VOLUME_UP:
-			ret = bt_rend_volume_up();
-			if (ret) {
-				LOG_WRN("Failed to increase volume: %d", ret);
-			}
+			LOG_WRN("No action specified, vol_up");
 
 			break;
 
 		case BUTTON_VOLUME_DOWN:
-			ret = bt_rend_volume_down();
-			if (ret) {
-				LOG_WRN("Failed to decrease volume: %d", ret);
-			}
+			LOG_WRN("No action specified, vol_down");
 
 			break;
 
 		case BUTTON_4:
-			if (IS_ENABLED(CONFIG_AUDIO_TEST_TONE)) {
-				if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-					LOG_DBG("Test tone is disabled in walkie-talkie mode");
-					break;
-				}
-
-				if (strm_state != STATE_STREAMING) {
-					LOG_WRN("Not in streaming state");
-					break;
-				}
-
-				ret = audio_system_encode_test_tone_step();
-				if (ret) {
-					LOG_WRN("Failed to play test tone, ret: %d", ret);
-				}
-
-				break;
-			}
+			LOG_WRN("No action specified, btn_4");
 
 			break;
 
 		case BUTTON_5:
-			if (IS_ENABLED(CONFIG_AUDIO_MUTE)) {
-				ret = bt_rend_volume_mute(false);
-				if (ret) {
-					LOG_WRN("Failed to mute, ret: %d", ret);
-				}
-
-				break;
+			ret = bt_rend_volume_mute(false);
+			if (ret) {
+				LOG_WRN("Failed to mute, ret: %d", ret);
 			}
 
 			break;
@@ -234,14 +186,12 @@ static void le_audio_msg_sub_thread(void)
 			LOG_DBG("\tSampling rate: %d Hz", sampling_rate_hz);
 			LOG_DBG("\tBitrate (compressed): %d bps", bitrate_bps);
 
-			if (msg.dir == BT_AUDIO_DIR_SINK) {
-				ret = audio_system_config_set(VALUE_NOT_SET, VALUE_NOT_SET,
-							      sampling_rate_hz);
-				ERR_CHK(ret);
-			} else if (msg.dir == BT_AUDIO_DIR_SOURCE) {
+			if (msg.dir == BT_AUDIO_DIR_SOURCE) {
 				ret = audio_system_config_set(sampling_rate_hz, bitrate_bps,
 							      VALUE_NOT_SET);
 				ERR_CHK(ret);
+			} else {
+				LOG_WRN("Received config for SINK");
 			}
 
 			break;
@@ -328,7 +278,6 @@ static int zbus_subscribers_create(void)
  */
 static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 {
-	int ret;
 	const struct bt_mgmt_msg *msg;
 
 	msg = zbus_chan_const_msg(chan);
@@ -342,27 +291,10 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 	case BT_MGMT_DISCONNECTED:
 		LOG_INF("Disconnected");
 
-		ret = bt_content_ctrl_conn_disconnected(msg->conn);
-		if (ret) {
-			LOG_ERR("Failed to handle disconnection in content control: %d", ret);
-		}
-
 		break;
 
 	case BT_MGMT_SECURITY_CHANGED:
 		LOG_INF("Security changed");
-
-		ret = bt_rend_discover(msg->conn);
-		if (ret) {
-			LOG_WRN("Failed to discover rendering services");
-		}
-
-		ret = bt_content_ctrl_discover(msg->conn);
-		if (ret == -EALREADY) {
-			LOG_DBG("Discovery in progress or already done");
-		} else if (ret) {
-			LOG_ERR("Failed to start discovery of content control: %d", ret);
-		}
 
 		break;
 
@@ -428,20 +360,6 @@ static int ext_adv_populate(struct bt_data *ext_adv_buf, size_t ext_adv_buf_size
 	ext_adv_buf[ext_adv_buf_cnt].data = uuid_buf.data;
 	ext_adv_buf_cnt++;
 
-	ret = bt_rend_uuid_populate(&uuid_buf);
-
-	if (ret) {
-		LOG_ERR("Failed to add adv data from renderer: %d", ret);
-		return ret;
-	}
-
-	ret = bt_content_ctrl_uuid_populate(&uuid_buf);
-
-	if (ret) {
-		LOG_ERR("Failed to add adv data from content ctrl: %d", ret);
-		return ret;
-	}
-
 	ret = bt_mgmt_manufacturer_uuid_populate(&uuid_buf, CONFIG_BT_DEVICE_MANUFACTURER_ID);
 	if (ret) {
 		LOG_ERR("Failed to add adv data with manufacturer ID: %d", ret);
@@ -499,15 +417,13 @@ void streamctrl_send(void const *const data, size_t size, uint8_t num_ch)
 int main(void)
 {
 	int ret;
-	enum bt_audio_location location;
-	enum audio_channel channel;
 	static struct bt_data ext_adv_buf[CONFIG_EXT_ADV_BUF_MAX];
 
 	LOG_DBG("nRF5340 APP core started");
 
 	size_t ext_adv_buf_cnt = 0;
 
-	ret = nrf5340_audio_dk_init(false, 0);
+	ret = nrf5340_audio_dk_init(true, LED_COLOR_CYAN);
 	ERR_CHK(ret);
 
 	ret = nrf5340_audio_common_init();
@@ -519,25 +435,8 @@ int main(void)
 	ret = zbus_link_producers_observers();
 	ERR_CHK_MSG(ret, "Failed to link zbus producers and observers");
 
-	ret = le_audio_rx_init();
-	ERR_CHK_MSG(ret, "Failed to initialize rx path");
-
-	channel_assignment_get(&channel);
-
-	if (channel == AUDIO_CH_L) {
-		location = BT_AUDIO_LOCATION_FRONT_LEFT;
-	} else {
-		location = BT_AUDIO_LOCATION_FRONT_RIGHT;
-	}
-
-	ret = unicast_server_enable(le_audio_rx_data_handler, location);
+	ret = unicast_server_enable(NULL, BT_AUDIO_LOCATION_MONO_AUDIO);
 	ERR_CHK_MSG(ret, "Failed to enable LE Audio");
-
-	ret = bt_rend_init();
-	ERR_CHK(ret);
-
-	ret = bt_content_ctrl_init();
-	ERR_CHK(ret);
 
 	ret = ext_adv_populate(ext_adv_buf, ARRAY_SIZE(ext_adv_buf), &ext_adv_buf_cnt);
 	ERR_CHK(ret);

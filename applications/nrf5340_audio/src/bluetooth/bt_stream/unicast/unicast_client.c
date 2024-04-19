@@ -888,6 +888,7 @@ static struct bt_bap_unicast_client_cb unicast_client_cbs = {
 	.discover = discover_cb,
 };
 
+#if (CONFIG_BT_AUDIO_TX)
 static void stream_sent_cb(struct bt_bap_stream *stream)
 {
 	int ret;
@@ -905,6 +906,7 @@ static void stream_sent_cb(struct bt_bap_stream *stream)
 		LOG_WRN("Not in streaming state");
 	}
 }
+#endif /* CONFIG_BT_AUDIO_TX */
 
 static void stream_configured_cb(struct bt_bap_stream *stream,
 				 const struct bt_audio_codec_qos_pref *pref)
@@ -1090,7 +1092,6 @@ static void stream_enabled_cb(struct bt_bap_stream *stream)
 static void stream_started_cb(struct bt_bap_stream *stream)
 {
 	int ret;
-	uint8_t channel_index;
 	enum bt_audio_dir dir;
 
 	dir = le_audio_stream_dir_get(stream);
@@ -1099,11 +1100,14 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 		return;
 	}
 
-	ret = channel_index_get(stream->conn, &channel_index);
-	if (ret) {
-		LOG_ERR("Channel index not found");
-	} else {
-		ERR_CHK(bt_le_audio_tx_stream_started(channel_index));
+	if (IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
+		uint8_t channel_index;
+		ret = channel_index_get(stream->conn, &channel_index);
+		if (ret) {
+			LOG_ERR("Channel index not found");
+		} else {
+			ERR_CHK(bt_le_audio_tx_stream_started(channel_index));
+		}
 	}
 
 	/* NOTE: The string below is used by the Nordic CI system */
@@ -1125,27 +1129,32 @@ static void stream_disabled_cb(struct bt_bap_stream *stream)
 static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 {
 	int ret;
-	uint8_t channel_index;
 
 	/* NOTE: The string below is used by the Nordic CI system */
 	LOG_INF("Stream %p stopped. Reason %d", (void *)stream, reason);
 
-	ret = channel_index_get(stream->conn, &channel_index);
-	if (ret) {
-		LOG_ERR("Channel index not found");
-	} else {
-		ERR_CHK(bt_le_audio_tx_stream_stopped(channel_index));
+	if (IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
+		uint8_t channel_index;
+		ret = channel_index_get(stream->conn, &channel_index);
+		if (ret) {
+			LOG_ERR("Channel index not found");
+		} else {
+			ret = bt_le_audio_tx_stream_stopped(channel_index);
+			ERR_CHK(ret);
+		}
 	}
 
 	/* Check if the other streams are streaming, send event if not */
 	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
 		if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
+					    BT_BAP_EP_STATE_STREAMING) ||
+		    le_audio_ep_state_check(headsets[i].source_stream.ep,
 					    BT_BAP_EP_STATE_STREAMING)) {
 			return;
 		}
 	}
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn, BT_AUDIO_DIR_SINK);
+	// le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn, BT_AUDIO_DIR_SINK);
 }
 
 static void stream_released_cb(struct bt_bap_stream *stream)
@@ -1154,7 +1163,7 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 
 	/* Check if the other streams are streaming, send event if not */
 	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
-		if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
+		if (le_audio_ep_state_check(headsets[i].source_stream.ep,
 					    BT_BAP_EP_STATE_STREAMING)) {
 			return;
 		}
@@ -1415,22 +1424,42 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 	return ret;
 }
 
-int unicast_client_start(void)
+int unicast_client_start(enum bt_audio_dir dir)
 {
 	int ret;
 	int ret_total = 0;
 
-	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
-		/* Start all streams in the configured state */
-		if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
-					    BT_BAP_EP_STATE_QOS_CONFIGURED)) {
-			ret = bt_bap_stream_enable(&headsets[i].sink_stream,
-						   lc3_preset_sink.codec_cfg.meta,
-						   lc3_preset_sink.codec_cfg.meta_len);
+	if (dir == BT_AUDIO_DIR_SINK) {
+		for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
+			/* Start all streams in the configured state */
+			if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
+						    BT_BAP_EP_STATE_QOS_CONFIGURED)) {
+				ret = bt_bap_stream_enable(&headsets[i].sink_stream,
+							   lc3_preset_sink.codec_cfg.meta,
+							   lc3_preset_sink.codec_cfg.meta_len);
 
-			if (ret) {
-				LOG_WRN("Failed to enable stream %d: %d", i, ret);
-				ret_total++;
+				if (ret) {
+					LOG_WRN("Failed to enable stream %d: %d", i, ret);
+					ret_total++;
+				}
+			}
+		}
+	} else if (dir == BT_AUDIO_DIR_SOURCE) {
+		for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
+			/* Start all streams in the configured state */
+			struct bt_bap_ep_info ep_info;
+			ret = bt_bap_ep_get_info(headsets[i].source_stream.ep, &ep_info);
+
+			if (le_audio_ep_state_check(headsets[i].source_stream.ep,
+						    BT_BAP_EP_STATE_QOS_CONFIGURED)) {
+				ret = bt_bap_stream_enable(&headsets[i].source_stream,
+							   lc3_preset_source.codec_cfg.meta,
+							   lc3_preset_source.codec_cfg.meta_len);
+
+				if (ret) {
+					LOG_WRN("Failed to enable stream %d: %d", i, ret);
+					ret_total++;
+				}
 			}
 		}
 	}
@@ -1444,22 +1473,37 @@ int unicast_client_start(void)
 	return 0;
 }
 
-int unicast_client_stop(void)
+int unicast_client_stop(enum bt_audio_dir dir)
 {
 	int ret;
 	int ret_total = 0;
 
 	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, NULL, 0);
 
-	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
-		/* Stop all streams currently in a streaming state */
-		if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
-					    BT_BAP_EP_STATE_STREAMING)) {
-			ret = bt_bap_stream_disable(&headsets[i].sink_stream);
+	if (dir == BT_AUDIO_DIR_SINK) {
+		for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
+			/* Stop all streams currently in a streaming state */
+			if (le_audio_ep_state_check(headsets[i].sink_stream.ep,
+						    BT_BAP_EP_STATE_STREAMING)) {
+				ret = bt_bap_stream_disable(&headsets[i].sink_stream);
 
-			if (ret) {
-				LOG_WRN("Failed to disable stream %d: %d", i, ret);
-				ret_total++;
+				if (ret) {
+					LOG_WRN("Failed to disable stream %d: %d", i, ret);
+					ret_total++;
+				}
+			}
+		}
+	} else if (dir == BT_AUDIO_DIR_SOURCE) {
+		for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
+			/* Stop all streams currently in a streaming state */
+			if (le_audio_ep_state_check(headsets[i].source_stream.ep,
+						    BT_BAP_EP_STATE_STREAMING)) {
+				ret = bt_bap_stream_disable(&headsets[i].source_stream);
+
+				if (ret) {
+					LOG_WRN("Failed to disable stream %d: %d", i, ret);
+					ret_total++;
+				}
 			}
 		}
 	}
@@ -1475,8 +1519,8 @@ int unicast_client_stop(void)
 
 int unicast_client_send(struct le_audio_encoded_audio enc_audio)
 {
+#if (CONFIG_BT_AUDIO_TX)
 	int ret;
-#if CONFIG_BT_AUDIO_TX
 	struct bt_bap_stream *bap_tx_streams[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
 	uint8_t channel_mask[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT] = {0};
 
@@ -1494,7 +1538,7 @@ int unicast_client_send(struct le_audio_encoded_audio enc_audio)
 	if (ret) {
 		return ret;
 	}
-#endif /*CONFIG_BT_AUDIO_TX*/
+#endif /* (CONFIG_BT_AUDIO_TX) */
 
 	return 0;
 }
@@ -1530,9 +1574,9 @@ int unicast_client_enable(le_audio_receive_cb recv_cb)
 	LOG_DBG("Start workers");
 
 	for (int i = 0; i < ARRAY_SIZE(headsets); i++) {
-		headsets[i].sink_stream.ops = &stream_ops;
 		headsets[i].source_stream.ops = &stream_ops;
-		k_work_init_delayable(&headsets[i].stream_start_sink_work, work_stream_start);
+		// k_work_init_delayable(&headsets[i].stream_start_sink_work,
+		// work_stream_start);
 		k_work_init_delayable(&headsets[i].stream_start_source_work, work_stream_start);
 	}
 
@@ -1542,9 +1586,11 @@ int unicast_client_enable(le_audio_receive_cb recv_cb)
 		return ret;
 	}
 
-	ret = bt_le_audio_tx_init();
-	if (ret) {
-		return ret;
+	if (IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
+		ret = bt_le_audio_tx_init();
+		if (ret) {
+			return ret;
+		}
 	}
 
 	for (int i = 0; i < ARRAY_SIZE(group_stream_params); i++) {
@@ -1560,7 +1606,7 @@ int unicast_client_enable(le_audio_receive_cb recv_cb)
 	}
 
 	for (int i = 0; i < ARRAY_SIZE(pair_params); i++) {
-		pair_params[i].tx_param = &group_stream_params[stream_iterator];
+		pair_params[i].tx_param = NULL;
 		stream_iterator++;
 
 		if (IS_ENABLED(CONFIG_BT_AUDIO_RX)) {

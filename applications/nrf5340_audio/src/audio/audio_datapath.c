@@ -883,9 +883,12 @@ void audio_datapath_pres_delay_us_get(uint32_t *delay_us)
 	*delay_us = ctrl_blk.pres_comp.pres_delay_us;
 }
 
-void audio_datapath_stream_out(const uint8_t *buf, size_t size, uint32_t sdu_ref_us, bool bad_frame,
-			       uint32_t recv_frame_ts_us)
+void audio_datapath_stream_out(const uint8_t *buf, size_t size, uint8_t channel,
+			       uint32_t sdu_ref_us, bool bad_frame, uint32_t recv_frame_ts_us)
 {
+
+	static char pcm_data_stereo_mixed[PCM_NUM_BYTES_STEREO] = {0};
+
 	if (!ctrl_blk.stream_started) {
 		LOG_WRN("Stream not started");
 		return;
@@ -898,38 +901,36 @@ void audio_datapath_stream_out(const uint8_t *buf, size_t size, uint32_t sdu_ref
 	}
 
 	if (sdu_ref_us == ctrl_blk.prev_pres_sdu_ref_us && sdu_ref_us != 0) {
-		LOG_WRN("Duplicate sdu_ref_us (%d) - Dropping audio frame", sdu_ref_us);
-		return;
+		// LOG_WRN("Duplicate sdu_ref_us (%d) ", sdu_ref_us);
+		//  return;
 	}
 
 	bool sdu_ref_not_consecutive = false;
 
-	if (ctrl_blk.prev_pres_sdu_ref_us) {
-		uint32_t sdu_ref_delta_us = sdu_ref_us - ctrl_blk.prev_pres_sdu_ref_us;
+	// if (ctrl_blk.prev_pres_sdu_ref_us) {
+	// 	uint32_t sdu_ref_delta_us = sdu_ref_us - ctrl_blk.prev_pres_sdu_ref_us;
 
-		/* Check if the delta is from two consecutive frames */
-		if (sdu_ref_delta_us <
-		    (CONFIG_AUDIO_FRAME_DURATION_US + (CONFIG_AUDIO_FRAME_DURATION_US / 2))) {
-			/* Check for invalid delta */
-			if ((sdu_ref_delta_us >
-			     (CONFIG_AUDIO_FRAME_DURATION_US + SDU_REF_DELTA_MAX_ERR_US)) ||
-			    (sdu_ref_delta_us <
-			     (CONFIG_AUDIO_FRAME_DURATION_US - SDU_REF_DELTA_MAX_ERR_US))) {
-				LOG_DBG("Invalid sdu_ref_us delta (%d) - Estimating sdu_ref_us",
-					sdu_ref_delta_us);
+	// 	/* Check if the delta is from two consecutive frames */
+	// 	if (sdu_ref_delta_us <
+	// 	    (CONFIG_AUDIO_FRAME_DURATION_US + (CONFIG_AUDIO_FRAME_DURATION_US / 2))) {
+	// 		/* Check for invalid delta */
+	// 		if ((sdu_ref_delta_us >
+	// 		     (CONFIG_AUDIO_FRAME_DURATION_US + SDU_REF_DELTA_MAX_ERR_US)) ||
+	// 		    (sdu_ref_delta_us <
+	// 		     (CONFIG_AUDIO_FRAME_DURATION_US - SDU_REF_DELTA_MAX_ERR_US))) {
+	// 			LOG_DBG("Invalid sdu_ref_us delta (%d) - Estimating sdu_ref_us",
+	// 				sdu_ref_delta_us);
 
-				/* Estimate sdu_ref_us */
-				sdu_ref_us = ctrl_blk.prev_pres_sdu_ref_us +
-					     CONFIG_AUDIO_FRAME_DURATION_US;
-			}
-		} else {
-			LOG_INF("sdu_ref_us not from consecutive frames (diff: %d us)",
-				sdu_ref_delta_us);
-			sdu_ref_not_consecutive = true;
-		}
-	}
-
-	ctrl_blk.prev_pres_sdu_ref_us = sdu_ref_us;
+	// 			/* Estimate sdu_ref_us */
+	// 			sdu_ref_us = ctrl_blk.prev_pres_sdu_ref_us +
+	// 				     CONFIG_AUDIO_FRAME_DURATION_US;
+	// 		}
+	// 	} else {
+	// 		LOG_INF("sdu_ref_us not from consecutive frames (diff: %d us)",
+	// 			sdu_ref_delta_us);
+	// 		sdu_ref_not_consecutive = true;
+	// 	}
+	// }
 
 	/*** Presentation compensation ***/
 	if (ctrl_blk.pres_comp.enabled) {
@@ -942,7 +943,8 @@ void audio_datapath_stream_out(const uint8_t *buf, size_t size, uint32_t sdu_ref
 	int ret;
 	size_t pcm_size;
 
-	ret = sw_codec_decode(buf, size, bad_frame, &ctrl_blk.decoded_data, &pcm_size);
+	ret = sw_codec_decode(buf, size, channel, bad_frame, &ctrl_blk.decoded_data, &pcm_size,
+			      false);
 	if (ret) {
 		LOG_WRN("SW codec decode error: %d", ret);
 	}
@@ -953,44 +955,60 @@ void audio_datapath_stream_out(const uint8_t *buf, size_t size, uint32_t sdu_ref
 		}
 	}
 
-	if (pcm_size != (BLK_STEREO_SIZE_OCTETS * NUM_BLKS_IN_FRAME)) {
-		LOG_WRN("Decoded audio has wrong size: %d. Expected: %d", pcm_size,
-			(BLK_STEREO_SIZE_OCTETS * NUM_BLKS_IN_FRAME));
-		/* Discard frame */
-		return;
-	}
+	// if (pcm_size != (BLK_STEREO_SIZE_OCTETS * NUM_BLKS_IN_FRAME)) {
+	// 	LOG_WRN("Decoded audio has wrong size: %d. Expected: %d", pcm_size,
+	// 		(BLK_STEREO_SIZE_OCTETS * NUM_BLKS_IN_FRAME));
+	// 	/* Discard frame */
+	// 	return;
+	// }
 
-	/*** Add audio data to FIFO buffer ***/
+	if (ctrl_blk.prev_pres_sdu_ref_us != sdu_ref_us) {
+		/*** Add audio data to FIFO buffer ***/
 
-	int32_t num_blks_in_fifo = ctrl_blk.out.prod_blk_idx - ctrl_blk.out.cons_blk_idx;
+		int32_t num_blks_in_fifo = ctrl_blk.out.prod_blk_idx - ctrl_blk.out.cons_blk_idx;
 
-	if ((num_blks_in_fifo + NUM_BLKS_IN_FRAME) > FIFO_NUM_BLKS) {
-		LOG_WRN("Output audio stream overrun - Discarding audio frame");
+		if ((num_blks_in_fifo + NUM_BLKS_IN_FRAME) > FIFO_NUM_BLKS) {
+			LOG_WRN("Output audio stream overrun - Discarding audio frame");
 
-		/* Discard frame to allow consumer to catch up */
-		return;
-	}
-
-	uint32_t out_blk_idx = ctrl_blk.out.prod_blk_idx;
-
-	for (uint32_t i = 0; i < NUM_BLKS_IN_FRAME; i++) {
-		if (IS_ENABLED(CONFIG_AUDIO_BIT_DEPTH_16)) {
-			memcpy(&ctrl_blk.out.fifo[out_blk_idx * BLK_STEREO_NUM_SAMPS],
-			       &((int16_t *)ctrl_blk.decoded_data)[i * BLK_STEREO_NUM_SAMPS],
-			       BLK_STEREO_SIZE_OCTETS);
-		} else if (IS_ENABLED(CONFIG_AUDIO_BIT_DEPTH_32)) {
-			memcpy(&ctrl_blk.out.fifo[out_blk_idx * BLK_STEREO_NUM_SAMPS],
-			       &((int32_t *)ctrl_blk.decoded_data)[i * BLK_STEREO_NUM_SAMPS],
-			       BLK_STEREO_SIZE_OCTETS);
+			/* Discard frame to allow consumer to catch up */
+			return;
 		}
 
-		/* Record producer block start reference */
-		ctrl_blk.out.prod_blk_ts[out_blk_idx] = recv_frame_ts_us + (i * BLK_PERIOD_US);
+		uint32_t out_blk_idx = ctrl_blk.out.prod_blk_idx;
 
-		out_blk_idx = NEXT_IDX(out_blk_idx);
+		for (uint32_t i = 0; i < NUM_BLKS_IN_FRAME; i++) {
+			if (IS_ENABLED(CONFIG_AUDIO_BIT_DEPTH_16)) {
+				memcpy(&ctrl_blk.out.fifo[out_blk_idx * BLK_STEREO_NUM_SAMPS],
+				       &((int16_t *)
+						 pcm_data_stereo_mixed)[i * BLK_STEREO_NUM_SAMPS],
+				       BLK_STEREO_SIZE_OCTETS);
+			} else if (IS_ENABLED(CONFIG_AUDIO_BIT_DEPTH_32)) {
+				memcpy(&ctrl_blk.out.fifo[out_blk_idx * BLK_STEREO_NUM_SAMPS],
+				       &((int32_t *)
+						 pcm_data_stereo_mixed)[i * BLK_STEREO_NUM_SAMPS],
+				       BLK_STEREO_SIZE_OCTETS);
+			}
+
+			/* Record producer block start reference */
+			ctrl_blk.out.prod_blk_ts[out_blk_idx] =
+				recv_frame_ts_us + (i * BLK_PERIOD_US);
+
+			out_blk_idx = NEXT_IDX(out_blk_idx);
+		}
+
+		ctrl_blk.out.prod_blk_idx = out_blk_idx;
+		memset(pcm_data_stereo_mixed, 0, PCM_NUM_BYTES_STEREO);
 	}
 
-	ctrl_blk.out.prod_blk_idx = out_blk_idx;
+	if ((channel % 2) == 0) {
+		pcm_mix(pcm_data_stereo_mixed, PCM_NUM_BYTES_STEREO, ctrl_blk.decoded_data,
+			pcm_size, B_MONO_INTO_A_STEREO_L);
+	} else {
+		pcm_mix(pcm_data_stereo_mixed, PCM_NUM_BYTES_STEREO, ctrl_blk.decoded_data,
+			pcm_size, B_MONO_INTO_A_STEREO_R);
+	}
+
+	ctrl_blk.prev_pres_sdu_ref_us = sdu_ref_us;
 }
 
 int audio_datapath_start(struct data_fifo *fifo_rx)

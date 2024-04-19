@@ -85,14 +85,14 @@ void unicast_client_conn_disconnected(struct bt_conn *conn);
  *
  * @return	0 for success, error otherwise.
  */
-int unicast_client_start(void);
+int unicast_client_start(enum bt_audio_dir dir);
 
 /**
  * @brief	Stop the Bluetooth LE Audio unicast (CIS) client.
  *
  * @return	0 for success, error otherwise.
  */
-int unicast_client_stop(void);
+int unicast_client_stop(enum bt_audio_dir dir);
 
 /**
  * @brief	Send encoded audio using the Bluetooth LE Audio unicast.

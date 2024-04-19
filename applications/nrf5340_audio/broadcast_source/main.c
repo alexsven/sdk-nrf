@@ -320,7 +320,7 @@ int main(void)
 
 	LOG_DBG("nRF5340 APP core started");
 
-	ret = nrf5340_audio_dk_init();
+	ret = nrf5340_audio_dk_init(false, 0);
 	ERR_CHK(ret);
 
 	ret = nrf5340_audio_common_init();

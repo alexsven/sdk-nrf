@@ -68,7 +68,7 @@ static void audio_gateway_configure(void)
 	}
 
 #if (CONFIG_STREAM_BIDIRECTIONAL)
-	sw_codec_cfg.decoder.num_ch = 1;
+	sw_codec_cfg.decoder.num_ch = 5;
 	sw_codec_cfg.decoder.channel_mode = SW_CODEC_MONO;
 #endif /* (CONFIG_STREAM_BIDIRECTIONAL) */
 
@@ -174,7 +174,7 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 			debug_trans_count++;
 		}
 
-		if (sw_codec_cfg.encoder.enabled) {
+		if (sw_codec_cfg.encoder.enabled && IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
 			streamctrl_send(encoded_data, encoded_data_size,
 					sw_codec_cfg.encoder.num_ch);
 		}
@@ -278,7 +278,8 @@ int audio_system_config_set(uint32_t encoder_sample_rate_hz, uint32_t encoder_bi
 }
 
 /* This function is only used on gateway using USB as audio source and bidirectional stream */
-int audio_system_decode(void const *const encoded_data, size_t encoded_data_size, bool bad_frame)
+int audio_system_decode(void const *const encoded_data, size_t encoded_data_size, uint8_t channel,
+			bool bad_frame)
 {
 	int ret;
 	uint32_t blocks_alloced_num;
@@ -328,8 +329,8 @@ int audio_system_decode(void const *const encoded_data, size_t encoded_data_size
 		}
 	}
 
-	ret = sw_codec_decode(encoded_data, encoded_data_size, bad_frame, &pcm_raw_data,
-			      &pcm_block_size);
+	ret = sw_codec_decode(encoded_data, encoded_data_size, channel, bad_frame, &pcm_raw_data,
+			      &pcm_block_size, sw_codec_cfg.decoder.audio_ch);
 	if (ret) {
 		LOG_ERR("Failed to decode");
 		return ret;

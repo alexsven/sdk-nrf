@@ -75,11 +75,11 @@ static void content_control_msg_sub_thread(void)
 
 		switch (msg.event) {
 		case MEDIA_START:
-			unicast_client_start();
+			unicast_client_start(BT_AUDIO_DIR_SINK);
 			break;
 
 		case MEDIA_STOP:
-			unicast_client_stop();
+			unicast_client_stop(BT_AUDIO_DIR_SINK);
 			break;
 
 		default:
@@ -473,7 +473,7 @@ int main(void)
 
 	LOG_DBG("nRF5340 APP core started");
 
-	ret = nrf5340_audio_dk_init();
+	ret = nrf5340_audio_dk_init(false, 0);
 	ERR_CHK(ret);
 
 	ret = nrf5340_audio_common_init();

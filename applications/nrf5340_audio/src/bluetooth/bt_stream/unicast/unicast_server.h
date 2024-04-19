@@ -72,6 +72,6 @@ int unicast_server_disable(void);
  *
  * @return	0 for success, error otherwise.
  */
-int unicast_server_enable(le_audio_receive_cb rx_cb);
+int unicast_server_enable(le_audio_receive_cb rx_cb, enum bt_audio_location location);
 
 #endif /* _UNICAST_SERVER_H_ */

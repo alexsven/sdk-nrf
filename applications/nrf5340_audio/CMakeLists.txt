@@ -57,11 +57,11 @@ if (CONFIG_BT_BAP_BROADCAST_SOURCE)
 endif()
 
 if (CONFIG_BT_BAP_UNICAST_CLIENT)
-	add_subdirectory(unicast_client)
+	add_subdirectory(microphone_receiver)
 endif()
 
 if (CONFIG_BT_BAP_UNICAST_SERVER)
-	add_subdirectory(unicast_server)
+	add_subdirectory(microphone)
 endif()
 
 

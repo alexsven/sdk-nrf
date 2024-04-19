@@ -35,7 +35,7 @@ static int hfclock_config_and_start(void)
 	return 0;
 }
 
-static int leds_set(void)
+static int leds_set(bool led_override, enum led_color color)
 {
 	int ret;
 
@@ -43,6 +43,16 @@ static int leds_set(void)
 	ret = led_blink(LED_APP_3_GREEN);
 	if (ret) {
 		return ret;
+	}
+
+	if (led_override) {
+		ret = led_on(LED_APP_RGB, color);
+		if (ret) {
+			LOG_WRN("Failed to set overridden LED: %d", ret);
+			return ret;
+		}
+
+		return 0;
 	}
 
 #if (CONFIG_AUDIO_DEV == HEADSET)
@@ -55,16 +65,13 @@ static int leds_set(void)
 	} else {
 		ret = led_on(LED_APP_RGB, LED_COLOR_MAGENTA);
 	}
+#elif (CONFIG_AUDIO_DEV == GATEWAY)
+	ret = led_on(LED_APP_RGB, LED_COLOR_GREEN);
+#endif /* (CONFIG_AUDIO_DEV == HEADSET) */
 
 	if (ret) {
 		return ret;
 	}
-#elif (CONFIG_AUDIO_DEV == GATEWAY)
-	ret = led_on(LED_APP_RGB, LED_COLOR_GREEN);
-	if (ret) {
-		return ret;
-	}
-#endif /* (CONFIG_AUDIO_DEV == HEADSET) */
 
 	return 0;
 }
@@ -99,7 +106,7 @@ static int channel_assign_check(void)
 	return 0;
 }
 
-int nrf5340_audio_dk_init(void)
+int nrf5340_audio_dk_init(bool led_override, enum led_color color)
 {
 	int ret;
 
@@ -146,7 +153,7 @@ int nrf5340_audio_dk_init(void)
 		}
 	}
 
-	ret = leds_set();
+	ret = leds_set(led_override, color);
 	if (ret) {
 		LOG_ERR("Failed to set LEDs");
 		return ret;
