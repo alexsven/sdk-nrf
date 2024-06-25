@@ -1,5 +1,9 @@
+#
+# Copyright (c) 2024 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
 
-rsource "Kconfig.defaults"
 rsource "../../nrf5340_audio/src/audio/Kconfig"
 rsource "../../nrf5340_audio/src/bluetooth/Kconfig"
 rsource "../../nrf5340_audio/src/modules/Kconfig"

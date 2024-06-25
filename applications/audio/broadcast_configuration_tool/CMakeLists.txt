@@ -10,18 +10,16 @@ project(BCT)
 
 # Include application events and configuration headers
 zephyr_library_include_directories(app PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/src/bluetooth
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/src/modules
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/src/utils/macros
+    ${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/include
+    ${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/src/bluetooth
+    ${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/src/modules
+    ${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/src/utils/macros
 )
 
-zephyr_library_include_directories(app PRIVATE
-    ${ZEPHYR_NRF_MODULE_DIR}/boards/arm/nrf5340_audio_dk_nrf5340)
+add_subdirectory(${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/src/bluetooth bluetooth_build)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/src/bluetooth bluetooth_build)
+target_sources_ifdef(CONFIG_NRF5340_AUDIO_SD_CARD_MODULE app PRIVATE ${ZEPHYR_NRF_MODULE_DIR}/applications/nrf5340_audio/src/modules/sd_card.c)
 
-target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../nrf5340_audio/src/modules/sd_card.c)
 
 FILE(GLOB app_sources src/*.c)
 
