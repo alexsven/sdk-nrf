@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+#include <stdlib.h>
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
@@ -11,6 +12,7 @@
 #include <zephyr/shell/shell.h>
 #include <nrfx_clock.h>
 
+#include "structures.h"
 #include "broadcast_source.h"
 #include "zbus_common.h"
 #include "macros_common.h"
@@ -46,8 +48,6 @@ static struct bt_data per_adv_buf[CONFIG_BT_ISO_MAX_BIG];
 #define BROADCAST_SRC_PBA_BUF_SIZE                                                                 \
 	(BROADCAST_SOURCE_PBA_HEADER_SIZE + CONFIG_BT_AUDIO_BROADCAST_PBA_METADATA_SIZE)
 
-#define PRESET_NAME_MAX 8
-
 /* Number of metadata items that can be assigned. */
 #define BROADCAST_SOURCE_PBA_METADATA_VACANT                                                       \
 	(CONFIG_BT_AUDIO_BROADCAST_PBA_METADATA_SIZE / (sizeof(struct bt_data)))
@@ -56,58 +56,6 @@ static struct bt_data per_adv_buf[CONFIG_BT_ISO_MAX_BIG];
  * (any addition to pba_buf requires an increase of this value)
  */
 uint8_t pba_data[CONFIG_BT_ISO_MAX_BIG][BROADCAST_SRC_PBA_BUF_SIZE];
-
-/* The location and context type will be set by further down */
-static struct bt_bap_lc3_preset lc3_preset_8_2_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_8_2_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_8_2_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_8_2_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_16_2_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_16_2_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_16_2_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_16_2_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_24_2_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_24_2_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_24_2_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_24_2_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_32_2_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_32_2_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_32_2_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_32_2_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_2_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_2_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_2_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_2_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_4_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_4_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_4_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_4_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_6_1 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_6_1(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-static struct bt_bap_lc3_preset lc3_preset_48_6_2 =
-	BT_BAP_LC3_BROADCAST_PRESET_48_6_2(BT_AUDIO_LOCATION_MONO_AUDIO, BT_AUDIO_CONTEXT_TYPE_ANY);
-
-struct bap_preset {
-	struct bt_bap_lc3_preset *preset;
-	char name[PRESET_NAME_MAX];
-};
-
-static struct bap_preset bap_presets[] = {
-	{.preset = &lc3_preset_8_2_1, .name = "8_2_1"},
-	{.preset = &lc3_preset_8_2_2, .name = "8_2_2"},
-	{.preset = &lc3_preset_16_2_1, .name = "16_2_1"},
-	{.preset = &lc3_preset_16_2_2, .name = "16_2_2"},
-	{.preset = &lc3_preset_24_2_1, .name = "24_2_1"},
-	{.preset = &lc3_preset_24_2_2, .name = "24_2_2"},
-	{.preset = &lc3_preset_32_2_1, .name = "32_2_1"},
-	{.preset = &lc3_preset_32_2_2, .name = "32_2_2"},
-	{.preset = &lc3_preset_48_2_1, .name = "48_2_1"},
-	{.preset = &lc3_preset_48_2_2, .name = "48_2_2"},
-	{.preset = &lc3_preset_48_4_1, .name = "48_4_1"},
-	{.preset = &lc3_preset_48_4_2, .name = "48_4_2"},
-	{.preset = &lc3_preset_48_6_1, .name = "48_6_1"},
-	{.preset = &lc3_preset_48_6_2, .name = "48_6_2"},
-};
 
 /**
  * @brief	Broadcast source static extended advertising data.
@@ -125,6 +73,37 @@ static struct broadcast_source_ext_adv_data ext_adv_data[] = {
  */
 static struct broadcast_source_per_adv_data per_adv_data[] = {{.base_buf = &base_data},
 							      {.base_buf = &base_data2}};
+
+static struct broadcast_source_big broadcast_param[CONFIG_BT_ISO_MAX_BIG];
+static struct subgroup_config subgroups[CONFIG_BT_ISO_MAX_BIG]
+				       [CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT];
+
+static enum bt_audio_location stream_location[CONFIG_BT_ISO_MAX_BIG]
+					     [CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT]
+					     [CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT] = {
+						     {{BT_AUDIO_LOCATION_MONO_AUDIO}}};
+
+static struct bt_bap_lc3_preset *preset_find(const char *name)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(bap_presets); i++) {
+		if (strcmp(bap_presets[i].name, name) == 0) {
+			return bap_presets[i].preset;
+		}
+	}
+
+	return NULL;
+}
+
+static char *preset_name_find(struct bt_bap_lc3_preset *preset)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(bap_presets); i++) {
+		if (bap_presets[i].preset == preset) {
+			return bap_presets[i].name;
+		}
+	}
+
+	return "Custom";
+}
 
 /**
  * @brief	Zbus listener to receive events from bt_mgmt.
@@ -293,37 +272,35 @@ static void audio_send(void const *const data, size_t size, uint8_t num_ch)
 	prev_ret = ret;
 }
 
-static void broadcast_create(struct broadcast_source_big *broadcast_param,
-			     struct bt_bap_lc3_preset *preset)
+static void broadcast_create(uint8_t big_index)
 {
-	static enum bt_audio_location location[2] = {BT_AUDIO_LOCATION_FRONT_LEFT,
-						     BT_AUDIO_LOCATION_FRONT_RIGHT};
-	static struct subgroup_config subgroups[2];
-
-	for (size_t i = 0; i < ARRAY_SIZE(subgroups); i++) {
-		subgroups[i].group_lc3_preset = *preset;
-		subgroups[i].num_bises = 2;
-		subgroups[i].context = BT_AUDIO_CONTEXT_TYPE_MEDIA;
-		subgroups[i].location = location;
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		LOG_ERR("BIG index out of range");
+		return;
 	}
 
-	broadcast_param->packing = BT_ISO_PACKING_INTERLEAVED;
+	struct broadcast_source_big *brdcst_param = &broadcast_param[big_index];
 
-	broadcast_param->encryption = false;
+	for (size_t i = 0; i < ARRAY_SIZE(subgroups[big_index]); i++) {
+		if (subgroups[big_index][i].num_bises == 0) {
+			/* Default to 2 BISes */
+			subgroups[big_index][i].num_bises = 2;
+		}
 
-	bt_audio_codec_cfg_meta_set_bcast_audio_immediate_rend_flag(
-		&subgroups[0].group_lc3_preset.codec_cfg);
+		if (subgroups[big_index][i].context == 0) {
+			subgroups[big_index][i].context = BT_AUDIO_CONTEXT_TYPE_MEDIA;
+		}
 
-	uint8_t english_src[3] = {'e', 'n', 'g'};
-	uint8_t spanish_src[3] = {'s', 'p', 'a'};
+		subgroups[big_index][i].location = stream_location[big_index][i];
+	}
 
-	bt_audio_codec_cfg_meta_set_stream_lang(&subgroups[0].group_lc3_preset.codec_cfg,
-						(uint32_t)sys_get_le24(english_src));
-	bt_audio_codec_cfg_meta_set_stream_lang(&subgroups[1].group_lc3_preset.codec_cfg,
-						(uint32_t)sys_get_le24(spanish_src));
+	brdcst_param->encryption = false;
+	brdcst_param->subgroups = subgroups[big_index];
 
-	broadcast_param->subgroups = subgroups;
-	broadcast_param->num_subgroups = 2;
+	/* If no subgroups are defined, set to 1 */
+	if (brdcst_param->num_subgroups == 0) {
+		brdcst_param->num_subgroups = 1;
+	}
 }
 
 int main(void)
@@ -355,15 +332,100 @@ int main(void)
 	return 0;
 }
 
-static struct bt_bap_lc3_preset *preset_find(const char *name)
+static void context_list(const struct shell *shell)
 {
-	for (size_t i = 0; i < ARRAY_SIZE(bap_presets); i++) {
-		if (strcmp(bap_presets[i].name, name) == 0) {
-			return bap_presets[i].preset;
+	for (size_t i = 0; i < ARRAY_SIZE(contexts); i++) {
+		shell_print(shell, "%s", contexts[i].name);
+	}
+}
+
+static void broadcast_config_print(const struct shell *shell,
+				   struct broadcast_source_big *broadcast_param)
+{
+	int ret;
+
+	shell_print(shell, "\tPacking: %s",
+		    (broadcast_param->packing == BT_ISO_PACKING_INTERLEAVED ? "interleaved"
+									    : "sequential"));
+	shell_print(shell, "\tEncryption: %s",
+		    (broadcast_param->encryption == true ? "true" : "false"));
+
+	for (size_t i = 0; i < broadcast_param->num_subgroups; i++) {
+		struct bt_audio_codec_cfg *codec_cfg =
+			&broadcast_param->subgroups[i].group_lc3_preset.codec_cfg;
+
+		shell_print(shell, "\tSubgroup %d:", i);
+
+		shell_print(shell, "\t\tPreset: %s", broadcast_param->subgroups[i].preset_name);
+
+		int freq_hz = 0;
+
+		ret = le_audio_freq_hz_get(codec_cfg, &freq_hz);
+		if (ret) {
+			shell_error(shell, "Failed to get sampling rate: %d", ret);
+		} else {
+			shell_print(shell, "\t\tSampling rate: %dHz", freq_hz);
+		}
+
+		uint32_t bitrate = 0;
+
+		ret = le_audio_bitrate_get(codec_cfg, &bitrate);
+		if (ret) {
+			shell_error(shell, "Failed to get bitrate: %d", ret);
+		} else {
+			shell_print(shell, "\t\tBitrate: %dbps", bitrate);
+		}
+
+		int frame_duration = 0;
+
+		ret = le_audio_duration_us_get(codec_cfg, &frame_duration);
+		if (ret) {
+			shell_error(shell, "Failed to get frame duration: %d", ret);
+		} else {
+			shell_print(shell, "\t\tFrame duration: %dus", frame_duration);
+		}
+
+		uint32_t octets_per_sdu = 0;
+
+		ret = le_audio_octets_per_frame_get(codec_cfg, &octets_per_sdu);
+		if (ret) {
+			shell_error(shell, "Failed to get octets per frame: %d", ret);
+		} else {
+			shell_print(shell, "\t\tOctets per frame: %d", octets_per_sdu);
+		}
+
+		int language = bt_audio_codec_cfg_meta_get_stream_lang(codec_cfg);
+
+		if (language > 0) {
+			char lang[4] = {'\0'};
+
+			for (size_t j = 0; j < 3; j++) {
+				lang[j] = (char)(language >> (8 * j));
+			}
+			shell_print(shell, "\t\tLanguage: %s", lang);
+		} else {
+			shell_print(shell, "\t\tLanguage: not_set");
+		}
+
+		shell_print(shell, "\t\tContext(s):");
+
+		for (size_t j = 0U; j < 16; j++) {
+			const uint16_t bit_val = BIT(j);
+
+			if (broadcast_param->subgroups[i].context & bit_val) {
+				shell_print(shell, "\t\t\t%s", context_bit_to_str(bit_val));
+			}
+		}
+
+		shell_print(shell, "\t\tNumber of BIS: %d",
+			    broadcast_param->subgroups[i].num_bises);
+		shell_print(shell, "\t\tLocation:");
+
+		for (size_t j = 0; j < broadcast_param->subgroups[i].num_bises; j++) {
+			shell_print(shell, "\t\t\tBIS %d: %s", j,
+				    location_bit_to_str(broadcast_param->subgroups[i].location[j]));
 		}
 	}
-
-	return NULL;
 }
 
 static int cmd_list(const struct shell *shell, size_t argc, char **argv)
@@ -378,15 +440,174 @@ static int cmd_list(const struct shell *shell, size_t argc, char **argv)
 	return 0;
 }
 
-static int cmd_start(const struct shell *shell, size_t argc, char **argv)
+static int adv_create_and_start(const struct shell *shell, uint8_t big_index)
 {
 	int ret;
 
 	size_t ext_adv_buf_cnt = 0;
 	size_t per_adv_buf_cnt = 0;
 
-	if (argc < 2) {
-		shell_error(shell, "Usage: bct start <preset>");
+	/* Get advertising set for BIG0 */
+	ret = ext_adv_populate(big_index, &ext_adv_data[big_index], ext_adv_buf[big_index],
+			       ARRAY_SIZE(ext_adv_buf[big_index]), &ext_adv_buf_cnt);
+	if (ret) {
+		return ret;
+	}
+
+	ret = per_adv_populate(big_index, &per_adv_data[big_index], &per_adv_buf[big_index], 1,
+			       &per_adv_buf_cnt);
+	if (ret) {
+		return ret;
+	}
+
+	/* Start broadcaster */
+	ret = bt_mgmt_adv_start(big_index, ext_adv_buf[big_index], ext_adv_buf_cnt,
+				&per_adv_buf[big_index], per_adv_buf_cnt, false);
+	if (ret) {
+		shell_error(shell, "Failed to start advertising for BIG%d", big_index);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int cmd_start(const struct shell *shell, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc == 2) {
+		size_t big_index = strtoul(argv[1], NULL, 10);
+
+		if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+			shell_error(shell, "BIG index out of range");
+			return -EINVAL;
+		}
+
+		ret = broadcast_source_enable(&broadcast_param[big_index], big_index);
+		if (ret) {
+			shell_error(shell, "Failed to enable broadcaster: %d", ret);
+			return ret;
+		}
+
+		ret = adv_create_and_start(shell, big_index);
+
+	} else {
+		for (int i = 0; i < CONFIG_BT_ISO_MAX_BIG; i++) {
+			if (broadcast_param[i].subgroups != NULL ||
+			    broadcast_param[i].num_subgroups > 0) {
+				ret = broadcast_source_enable(&broadcast_param[i], i);
+				if (ret) {
+					shell_error(shell, "Failed to enable broadcaster(s): %d",
+						    ret);
+					return ret;
+				}
+				ret = adv_create_and_start(shell, i);
+				if (ret) {
+					return ret;
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int broadcaster_stop(const struct shell *shell, uint8_t big_index)
+{
+	int ret;
+
+	if (!broadcast_source_is_streaming(big_index)) {
+		return 0;
+	}
+
+	ret = broadcast_source_disable(big_index);
+	if (ret) {
+		shell_error(shell, "Failed to stop broadcaster(s) %d", ret);
+		return ret;
+	}
+
+	ret = bt_mgmt_per_adv_stop(big_index);
+	if (ret) {
+		shell_error(shell, "Failed to stop periodic advertiser");
+		return ret;
+	}
+
+	ret = bt_mgmt_ext_adv_stop(big_index);
+	if (ret) {
+		shell_error(shell, "Failed to stop extended advertiser");
+		return ret;
+	}
+
+	net_buf_simple_reset(&base_data);
+	net_buf_simple_reset(&base_data2);
+
+	net_buf_simple_reset(&uuid_data);
+	net_buf_simple_reset(&uuid_data2);
+
+	per_adv_buf[big_index].data_len = 0;
+	per_adv_buf[big_index].type = 0;
+
+	for (size_t j = 0; j < ARRAY_SIZE(ext_adv_buf[big_index]); j++) {
+		ext_adv_buf[big_index][j].data_len = 0;
+		ext_adv_buf[big_index][j].type = 0;
+	}
+
+	return 0;
+}
+
+static int cmd_stop(const struct shell *shell, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc == 2) {
+		size_t big_index = strtoul(argv[1], NULL, 10);
+
+		if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+			shell_error(shell, "BIG index out of range");
+			return -EINVAL;
+		}
+
+		ret = broadcaster_stop(shell, big_index);
+
+	} else {
+		for (size_t i = 0; i < CONFIG_BT_ISO_MAX_BIG; i++) {
+			if (broadcast_param[i].subgroups != NULL) {
+				ret = broadcaster_stop(shell, i);
+				if (ret) {
+					return ret;
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int cmd_show(const struct shell *shell, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	for (size_t i = 0; i < CONFIG_BT_ISO_MAX_BIG; i++) {
+		if (broadcast_param[i].subgroups == NULL) {
+			continue;
+		}
+
+		bool streaming = broadcast_source_is_streaming(i);
+
+		shell_print(shell, "BIG %d:", i);
+		shell_print(shell, "\tStreaming: %s", (streaming ? "true" : "false"));
+
+		broadcast_config_print(shell, &broadcast_param[i]);
+	}
+
+	return 0;
+}
+
+static int cmd_preset(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 3) {
+		shell_error(shell, "Usage: bct preset <preset> <BIG index>");
 		return -EINVAL;
 	}
 
@@ -397,86 +618,250 @@ static int cmd_start(const struct shell *shell, size_t argc, char **argv)
 		return -EINVAL;
 	}
 
-	struct broadcast_source_big broadcast_param;
+	size_t big_index = strtoul(argv[2], NULL, 10);
 
-	broadcast_create(&broadcast_param, preset);
-
-	ret = broadcast_source_enable(&broadcast_param, 1);
-	if (ret) {
-		shell_error(shell, "Failed to enable broadcaster(s): %d", ret);
-		return ret;
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
 	}
 
-	/* Get advertising set for BIG0 */
-	ret = ext_adv_populate(0, &ext_adv_data[0], ext_adv_buf[0], ARRAY_SIZE(ext_adv_buf[0]),
-			       &ext_adv_buf_cnt);
-	if (ret) {
-		return ret;
+	broadcast_create(big_index);
+
+	if (argc == 4) {
+		size_t sub_index = strtoul(argv[3], NULL, 10);
+
+		if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT ||
+		    (sub_index >= broadcast_param[big_index].num_subgroups)) {
+			shell_error(shell, "Subgroup index out of range");
+			return -EINVAL;
+		}
+
+		broadcast_param[big_index].subgroups[sub_index].group_lc3_preset = *preset;
+		broadcast_param[big_index].subgroups[sub_index].preset_name =
+			preset_name_find(preset);
+	} else {
+		for (size_t i = 0; i < broadcast_param[big_index].num_subgroups; i++) {
+			broadcast_param[big_index].subgroups[i].group_lc3_preset = *preset;
+			broadcast_param[big_index].subgroups[i].preset_name =
+				preset_name_find(preset);
+		}
 	}
 
-	ret = per_adv_populate(0, &per_adv_data[0], &per_adv_buf[0], 1, &per_adv_buf_cnt);
-	if (ret) {
-		return ret;
-	}
-
-	/* Start broadcaster */
-	ret = bt_mgmt_adv_start(0, ext_adv_buf[0], ext_adv_buf_cnt, &per_adv_buf[0],
-				per_adv_buf_cnt, false);
-	if (ret) {
-		shell_error(shell, "Failed to start first advertiser");
-		return ret;
-	}
-
-	shell_print(shell, "Broadcaster started");
 	return 0;
 }
 
-static int cmd_stop(const struct shell *shell, size_t argc, char **argv)
+static int cmd_packing(const struct shell *shell, size_t argc, char **argv)
 {
-	int ret;
+	if (argc < 2) {
+		shell_error(shell, "Usage: bct packing <seq/int> <BIG index>");
+		return -EINVAL;
+	}
 
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
+	size_t big_index = strtoul(argv[1], NULL, 10);
 
-	for (size_t i = 0; i < CONFIG_BT_ISO_MAX_BIG; i++) {
-		if (!broadcast_source_is_streaming(i)) {
-			continue;
-		}
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
 
-		ret = broadcast_source_disable(i);
-		if (ret) {
-			shell_error(shell, "Failed to stop broadcaster(s) %d", ret);
-			return ret;
-		}
+	if (strcmp(argv[1], "seq") == 0) {
+		broadcast_param[big_index].packing = BT_ISO_PACKING_SEQUENTIAL;
+	} else if (strcmp(argv[1], "int") == 0) {
+		broadcast_param[big_index].packing = BT_ISO_PACKING_INTERLEAVED;
+	} else {
+		shell_error(shell, "Invalid packing type");
+		return -EINVAL;
+	}
 
-		ret = bt_mgmt_per_adv_stop(i);
-		if (ret) {
-			shell_error(shell, "Failed to stop periodic advertiser");
-			return ret;
-		}
+	return 0;
+}
 
-		ret = bt_mgmt_ext_adv_stop(i);
-		if (ret) {
-			shell_error(shell, "Failed to stop extended advertiser");
-			return ret;
-		}
+static int cmd_lang_set(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 4) {
+		shell_error(shell, "Usage: bct lang_set <language> <BIG index> <subgroup index>");
+		return -EINVAL;
+	}
 
-		net_buf_simple_reset(&base_data);
-		net_buf_simple_reset(&base_data2);
+	char language[3];
 
-		net_buf_simple_reset(&uuid_data);
-		net_buf_simple_reset(&uuid_data2);
+	memcpy(language, argv[1], 3);
 
-		per_adv_buf[i].data_len = 0;
-		per_adv_buf[i].type = 0;
+	size_t big_index = strtoul(argv[2], NULL, 10);
 
-		for (size_t j = 0; j < ARRAY_SIZE(ext_adv_buf[i]); j++) {
-			ext_adv_buf[i][j].data_len = 0;
-			ext_adv_buf[i][j].type = 0;
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	size_t sub_index = strtoul(argv[3], NULL, 10);
+
+	if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Subgroup index out of range");
+		return -EINVAL;
+	}
+
+	bt_audio_codec_cfg_meta_set_stream_lang(
+		&broadcast_param[big_index].subgroups[sub_index].group_lc3_preset.codec_cfg,
+		(uint32_t)sys_get_le24(language));
+
+	return 0;
+}
+
+static int cmd_num_subgroups(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 3) {
+		shell_error(shell, "Usage: bct num_subgroups <num> <BIG index>");
+		return -EINVAL;
+	}
+
+	size_t num_subgroups = strtoul(argv[1], NULL, 10);
+	size_t big_index = strtoul(argv[2], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	if (num_subgroups > CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Max allowed subgroups is: %d",
+			    CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT);
+		return -EINVAL;
+	}
+
+	broadcast_param[big_index].num_subgroups = num_subgroups;
+
+	return 0;
+}
+
+static int cmd_num_bises(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 4) {
+		shell_error(shell, "Usage: bct num_bises <num> <BIG index> <subgroup index>");
+		return -EINVAL;
+	}
+
+	size_t num_bises = strtoul(argv[1], NULL, 10);
+	size_t big_index = strtoul(argv[2], NULL, 10);
+	size_t sub_index = strtoul(argv[3], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Subgroup index out of range");
+		return -EINVAL;
+	}
+
+	if (num_bises > CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT) {
+		shell_error(shell, "Max allowed BISes is: %d",
+			    CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT);
+		return -EINVAL;
+	}
+
+	broadcast_param[big_index].subgroups[sub_index].num_bises = num_bises;
+
+	return 0;
+}
+
+static int cmd_context(const struct shell *shell, size_t argc, char **argv)
+{
+	uint16_t context = 0;
+
+	if ((argc >= 2) && (strcmp(argv[1], "list") == 0)) {
+		context_list(shell);
+		return 0;
+	}
+
+	if (argc < 4) {
+		shell_error(shell, "Usage: bct context <context> <BIG index> <subgroup index>");
+		return -EINVAL;
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(contexts); i++) {
+		if (strcmp(argv[1], contexts[i].name) == 0) {
+			context = contexts[i].context;
+			break;
 		}
 	}
 
-	shell_print(shell, "Broadcaster stopped");
+	if (!context) {
+		shell_error(shell,
+			    "Context not found, use bct context list to see available contexts");
+		return -EINVAL;
+	}
+
+	size_t big_index = strtoul(argv[2], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	size_t sub_index = strtoul(argv[3], NULL, 10);
+
+	if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Subgroup index out of range");
+		return -EINVAL;
+	}
+
+	broadcast_param[big_index].subgroups[sub_index].context = context;
+
+	return 0;
+}
+
+static int location_find(const struct shell *shell, const char *name)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(locations); i++) {
+		if (strcmp(locations[i].name, name) == 0) {
+			return locations[i].location;
+		}
+	}
+
+	shell_error(shell, "Location not found");
+
+	return -ESRCH;
+}
+
+static int cmd_location(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 4) {
+		shell_error(
+			shell,
+			"Usage: bct location <location> <BIG index> <subgroup index> <BIS index>");
+		return -EINVAL;
+	}
+
+	size_t big_index = strtoul(argv[2], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	size_t sub_index = strtoul(argv[3], NULL, 10);
+
+	if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Subgroup index out of range");
+		return -EINVAL;
+	}
+
+	size_t bis_index = strtoul(argv[4], NULL, 10);
+
+	if (bis_index >= CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT) {
+		shell_error(shell, "BIS index out of range");
+		return -EINVAL;
+	}
+
+	int location = location_find(shell, argv[1]);
+
+	if (location < 0) {
+		return -EINVAL;
+	}
+
+	broadcast_param[big_index].subgroups[sub_index].location[bis_index] = location;
 
 	return 0;
 }
@@ -485,6 +870,15 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	configuration_cmd, SHELL_COND_CMD(CONFIG_SHELL, list, NULL, "List presets", cmd_list),
 	SHELL_COND_CMD(CONFIG_SHELL, start, NULL, "Start broadcaster", cmd_start),
 	SHELL_COND_CMD(CONFIG_SHELL, stop, NULL, "Stop broadcaster", cmd_stop),
+	SHELL_COND_CMD(CONFIG_SHELL, show, NULL, "Show current configuration", cmd_show),
+	SHELL_COND_CMD(CONFIG_SHELL, packing, NULL, "Set type of packing", cmd_packing),
+	SHELL_COND_CMD(CONFIG_SHELL, preset, NULL, "Set preset", cmd_preset),
+	SHELL_COND_CMD(CONFIG_SHELL, lang, NULL, "Set language", cmd_lang_set),
+	SHELL_COND_CMD(CONFIG_SHELL, num_subgroups, NULL, "Set number of subgroups",
+		       cmd_num_subgroups),
+	SHELL_COND_CMD(CONFIG_SHELL, num_bises, NULL, "Set number of BISes", cmd_num_bises),
+	SHELL_COND_CMD(CONFIG_SHELL, context, NULL, "Set context", cmd_context),
+	SHELL_COND_CMD(CONFIG_SHELL, location, NULL, "Set location", cmd_location),
 	SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(bct, &configuration_cmd, "Broadcast Configuration Tool", NULL);
