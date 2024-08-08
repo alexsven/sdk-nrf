@@ -297,6 +297,14 @@ static void broadcast_create(uint8_t big_index)
 	brdcst_param->encryption = false;
 	brdcst_param->subgroups = subgroups[big_index];
 
+	if (broadcast_param[big_index].name[0] == '\0') {
+		/* Name not set, using default */
+		size_t brdcst_name_size = sizeof(CONFIG_BT_AUDIO_BROADCAST_NAME) - 1;
+
+		memcpy(broadcast_param[big_index].name, CONFIG_BT_AUDIO_BROADCAST_NAME,
+		       brdcst_name_size);
+	}
+
 	/* If no subgroups are defined, set to 1 */
 	if (brdcst_param->num_subgroups == 0) {
 		brdcst_param->num_subgroups = 1;
@@ -343,6 +351,8 @@ static void broadcast_config_print(const struct shell *shell,
 				   struct broadcast_source_big *brdcst_param)
 {
 	int ret;
+
+	shell_print(shell, "\tName: %s", brdcst_param->name);
 
 	shell_print(shell, "\tPacking: %s",
 		    (brdcst_param->packing == BT_ISO_PACKING_INTERLEAVED ? "interleaved"
@@ -408,6 +418,7 @@ static void broadcast_config_print(const struct shell *shell,
 
 		shell_print(shell, "\t\tContext(s):");
 
+		/* Context container is a bit field with length 16 */
 		for (size_t j = 0U; j < 16; j++) {
 			const uint16_t bit_val = BIT(j);
 
@@ -416,6 +427,10 @@ static void broadcast_config_print(const struct shell *shell,
 			}
 		}
 
+		uint8_t immediate =
+			bt_audio_codec_cfg_meta_get_bcast_audio_immediate_rend_flag(codec_cfg);
+
+		shell_print(shell, "\t\tImmediate rendering flag: %d", immediate);
 		shell_print(shell, "\t\tNumber of BIS: %d", brdcst_param->subgroups[i].num_bises);
 		shell_print(shell, "\t\tLocation:");
 
@@ -444,6 +459,24 @@ static int adv_create_and_start(const struct shell *shell, uint8_t big_index)
 
 	size_t ext_adv_buf_cnt = 0;
 	size_t per_adv_buf_cnt = 0;
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	if (broadcast_param[big_index].name[0] == '\0') {
+		/* Name not set, using default */
+		size_t brdcst_name_size = sizeof(CONFIG_BT_AUDIO_BROADCAST_NAME) - 1;
+
+		memcpy(ext_adv_data[big_index].brdcst_name_buf, CONFIG_BT_AUDIO_BROADCAST_NAME,
+		       brdcst_name_size);
+	} else {
+		uint8_t name_length = strlen(broadcast_param[big_index].name);
+
+		memcpy(ext_adv_data[big_index].brdcst_name_buf, broadcast_param[big_index].name,
+		       name_length);
+	}
 
 	/* Get advertising set for BIG0 */
 	ret = ext_adv_populate(big_index, &ext_adv_data[big_index], ext_adv_buf[big_index],
@@ -710,6 +743,38 @@ static int cmd_lang_set(const struct shell *shell, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_immediate_set(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 3) {
+		shell_error(shell, "Usage: bct immediate <0/1> <BIG index> <subgroup index>");
+		return -EINVAL;
+	}
+
+	bool immediate = strtoul(argv[1], NULL, 10);
+	size_t big_index = strtoul(argv[2], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	size_t sub_index = strtoul(argv[3], NULL, 10);
+
+	if (sub_index >= CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT) {
+		shell_error(shell, "Subgroup index out of range");
+		return -EINVAL;
+	}
+
+	if (immediate) {
+		bt_audio_codec_cfg_meta_set_bcast_audio_immediate_rend_flag(
+			&broadcast_param[big_index]
+				 .subgroups[sub_index]
+				 .group_lc3_preset.codec_cfg);
+	}
+
+	return 0;
+}
+
 static int cmd_num_subgroups(const struct shell *shell, size_t argc, char **argv)
 {
 	if (argc < 3) {
@@ -868,6 +933,35 @@ static int cmd_location(const struct shell *shell, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_name(const struct shell *shell, size_t argc, char **argv)
+{
+	if (argc < 2) {
+		shell_error(shell, "Usage: bct name <name> <BIG index>");
+		return -EINVAL;
+	}
+
+	size_t big_index = strtoul(argv[2], NULL, 10);
+
+	if (big_index >= CONFIG_BT_ISO_MAX_BIG) {
+		shell_error(shell, "BIG index out of range");
+		return -EINVAL;
+	}
+
+	size_t name_length = strlen(argv[1]);
+
+	if (name_length > ARRAY_SIZE(broadcast_param[big_index].name)) {
+		shell_error(shell, "Name too long");
+		return -EINVAL;
+	}
+
+	/* Delete old name if set */
+	memset(broadcast_param[big_index].name, '\0', ARRAY_SIZE(broadcast_param[big_index].name));
+
+	memcpy(broadcast_param[big_index].name, argv[1], name_length);
+
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
 	configuration_cmd, SHELL_COND_CMD(CONFIG_SHELL, list, NULL, "List presets", cmd_list),
 	SHELL_COND_CMD(CONFIG_SHELL, start, NULL, "Start broadcaster", cmd_start),
@@ -876,11 +970,14 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_COND_CMD(CONFIG_SHELL, packing, NULL, "Set type of packing", cmd_packing),
 	SHELL_COND_CMD(CONFIG_SHELL, preset, NULL, "Set preset", cmd_preset),
 	SHELL_COND_CMD(CONFIG_SHELL, lang, NULL, "Set language", cmd_lang_set),
+	SHELL_COND_CMD(CONFIG_SHELL, immediate, NULL, "Set immediate rendering flag",
+		       cmd_immediate_set),
 	SHELL_COND_CMD(CONFIG_SHELL, num_subgroups, NULL, "Set number of subgroups",
 		       cmd_num_subgroups),
 	SHELL_COND_CMD(CONFIG_SHELL, num_bises, NULL, "Set number of BISes", cmd_num_bises),
 	SHELL_COND_CMD(CONFIG_SHELL, context, NULL, "Set context", cmd_context),
 	SHELL_COND_CMD(CONFIG_SHELL, location, NULL, "Set location", cmd_location),
+	SHELL_COND_CMD(CONFIG_SHELL, name, NULL, "Set broadcast name", cmd_name),
 	SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(bct, &configuration_cmd, "Broadcast Configuration Tool", NULL);
