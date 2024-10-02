@@ -1,0 +1,37 @@
+# Copyright (c) 2022 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Bluetooth: Broadcast Audio Sink"
+
+config SCAN_SELF
+	bool "Whether to scan for Broadcast Sources without Broadcast Assistant"
+	default y
+	help
+	  If set to true, the sample will start scanning for Broadcast Sources
+	  without waiting for a Broadcast Assistant to connect.
+
+config SCAN_DELAY
+	int "Delay before starting scan (in seconds)"
+	range 0 255
+	default 10
+	depends on SCAN_SELF
+	help
+	  Time to advertise connectable for a Broadcast Assistant to connect
+	  before starting scanning for Broadcast Sources.
+
+config TARGET_BROADCAST_NAME
+	string "Target Broadcast Device Name"
+	default "Testing"
+	help
+	  Name of target broadcast device. If not empty string, sink device
+	  will only listen to the specified broadcast source. Not case sensitive.
+
+config MAX_CODEC_FRAMES_PER_SDU
+	int "The maximum number of codec frame per SDU supported"
+	default 1
+	range 1 255
+	help
+	  Maximum number of codec frames per SDU supported by this device. Increasing this value
+	  allows support for a greater variaty of broadcasts, but also increases memory usage.
+
+source "Kconfig.zephyr"
