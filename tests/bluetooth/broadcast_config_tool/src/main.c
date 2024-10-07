@@ -15,6 +15,8 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/audio/pbp.h>
 
+#include "bct_test.h"
+
 BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
 	     "Either SCAN_SELF or SCAN_OFFLOAD must be enabled");
 
@@ -32,8 +34,8 @@ BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
 #define INVALID_BROADCAST_ID		  (BT_AUDIO_BROADCAST_ID_MAX + 1)
 #define PA_SYNC_INTERVAL_TO_TIMEOUT_RATIO 20 /* Set the timeout relative to interval */
 #define PA_SYNC_SKIP			  5
-#define NAME_LEN			  sizeof(CONFIG_TARGET_BROADCAST_NAME) + 1
-#define BROADCAST_DATA_ELEMENT_SIZE	  sizeof(int16_t)
+
+#define BROADCAST_DATA_ELEMENT_SIZE sizeof(int16_t)
 
 static K_SEM_DEFINE(sem_broadcast_sink_stopped, 0U, 1U);
 static K_SEM_DEFINE(sem_connected, 0U, 1U);
@@ -52,7 +54,6 @@ static K_SEM_DEFINE(sem_stream_started, 0U, CONFIG_BT_BAP_BROADCAST_SNK_STREAM_C
 static K_SEM_DEFINE(sem_big_synced, 0U, 1U);
 
 /* Sample assumes that we only have a single Scan Delegator receive state */
-static const struct bt_bap_scan_delegator_recv_state *req_recv_state;
 static struct bt_bap_broadcast_sink *broadcast_sink;
 static struct bt_le_scan_recv_info broadcaster_info;
 static bt_addr_le_t broadcaster_addr;
@@ -60,10 +61,6 @@ static struct bt_le_per_adv_sync *pa_sync;
 static uint32_t broadcaster_broadcast_id;
 static struct broadcast_sink_stream {
 	struct bt_bap_stream stream;
-	size_t recv_cnt;
-	size_t loss_cnt;
-	size_t error_cnt;
-	size_t valid_cnt;
 } streams[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 
 static struct bt_bap_stream *streams_p[ARRAY_SIZE(streams)];
@@ -72,8 +69,20 @@ static volatile bool base_received;
 static struct bt_conn *broadcast_assistant_conn;
 static volatile uint8_t stream_count;
 
+static struct bct_test_values_subgroup
+	subgroups_expected[CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT];
+static struct bct_test_values_subgroup subgroups_dut[CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT];
+
+static struct bct_test_values_big test_values_big_expected = {
+	.subgroups = subgroups_expected,
+};
+static struct bct_test_values_big test_values_big_dut = {
+	.subgroups = subgroups_dut,
+};
+
 static const struct bt_audio_codec_cap codec_cap = BT_AUDIO_CODEC_CAP_LC3(
-	BT_AUDIO_CODEC_CAP_FREQ_16KHZ | BT_AUDIO_CODEC_CAP_FREQ_24KHZ BT_AUDIO_CODEC_CAP_FREQ_48KHZ,
+	BT_AUDIO_CODEC_CAP_FREQ_16KHZ | BT_AUDIO_CODEC_CAP_FREQ_24KHZ |
+		BT_AUDIO_CODEC_CAP_FREQ_48KHZ,
 	BT_AUDIO_CODEC_CAP_DURATION_10, BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1), 40u, 120u,
 	CONFIG_MAX_CODEC_FRAMES_PER_SDU, BT_AUDIO_CONTEXT_TYPE_ANY);
 
@@ -109,16 +118,9 @@ static void stream_disconnected_cb(struct bt_bap_stream *stream, uint8_t reason)
 
 static void stream_started_cb(struct bt_bap_stream *stream)
 {
-	struct broadcast_sink_stream *sink_stream =
-		CONTAINER_OF(stream, struct broadcast_sink_stream, stream);
-
 	printk("Stream %p started\n", stream);
 
 	total_rx_iso_packet_count = 0U;
-	sink_stream->recv_cnt = 0U;
-	sink_stream->loss_cnt = 0U;
-	sink_stream->valid_cnt = 0U;
-	sink_stream->error_cnt = 0U;
 
 	k_sem_give(&sem_stream_started);
 	if (k_sem_count_get(&sem_stream_started) == stream_count) {
@@ -146,28 +148,7 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_info *info,
 			   struct net_buf *buf)
 {
-	struct broadcast_sink_stream *sink_stream =
-		CONTAINER_OF(stream, struct broadcast_sink_stream, stream);
-
-	if (info->flags & BT_ISO_FLAGS_ERROR) {
-		sink_stream->error_cnt++;
-	}
-
-	if (info->flags & BT_ISO_FLAGS_LOST) {
-		sink_stream->loss_cnt++;
-	}
-
-	if (info->flags & BT_ISO_FLAGS_VALID) {
-		sink_stream->valid_cnt++;
-	}
-
 	total_rx_iso_packet_count++;
-	sink_stream->recv_cnt++;
-	if ((sink_stream->recv_cnt % LOG_INTERVAL) == 0U) {
-		printk("Stream %p: received %u total ISO packets: Valid %u | Error %u | Loss %u\n",
-		       &sink_stream->stream, sink_stream->recv_cnt, sink_stream->valid_cnt,
-		       sink_stream->error_cnt, sink_stream->loss_cnt);
-	}
 }
 
 static struct bt_bap_stream_ops stream_ops = {
@@ -190,6 +171,9 @@ static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap
 
 	printk("Received BASE with %d subgroups from broadcast sink %p\n",
 	       bt_bap_base_get_subgroup_count(base), sink);
+
+	/* Add number of subgroups to DUT struct */
+	test_values_big_dut.num_subgroups = bt_bap_base_get_subgroup_count(base);
 
 	err = bt_bap_base_get_bis_indexes(base, &base_bis_index_bitfield);
 	if (err != 0) {
@@ -230,207 +214,6 @@ static struct bt_bap_broadcast_sink_cb broadcast_sink_cbs = {
 	.syncable = syncable_cb,
 };
 
-static void pa_timer_handler(struct k_work *work)
-{
-	if (req_recv_state != NULL) {
-		enum bt_bap_pa_state pa_state;
-
-		if (req_recv_state->pa_sync_state == BT_BAP_PA_STATE_INFO_REQ) {
-			pa_state = BT_BAP_PA_STATE_NO_PAST;
-		} else {
-			pa_state = BT_BAP_PA_STATE_FAILED;
-		}
-
-		bt_bap_scan_delegator_set_pa_state(req_recv_state->src_id, pa_state);
-	}
-
-	printk("PA timeout\n");
-}
-
-static K_WORK_DELAYABLE_DEFINE(pa_timer, pa_timer_handler);
-
-static uint16_t interval_to_sync_timeout(uint16_t pa_interval)
-{
-	uint16_t pa_timeout;
-
-	if (pa_interval == BT_BAP_PA_INTERVAL_UNKNOWN) {
-		/* Use maximum value to maximize chance of success */
-		pa_timeout = BT_GAP_PER_ADV_MAX_TIMEOUT;
-	} else {
-		uint32_t interval_ms;
-		uint32_t timeout;
-
-		/* Add retries and convert to unit in 10's of ms */
-		interval_ms = BT_GAP_PER_ADV_INTERVAL_TO_MS(pa_interval);
-		timeout = (interval_ms * PA_SYNC_INTERVAL_TO_TIMEOUT_RATIO) / 10;
-
-		/* Enforce restraints */
-		pa_timeout = CLAMP(timeout, BT_GAP_PER_ADV_MIN_TIMEOUT, BT_GAP_PER_ADV_MAX_TIMEOUT);
-	}
-
-	return pa_timeout;
-}
-
-static int pa_sync_past(struct bt_conn *conn, uint16_t pa_interval)
-{
-	struct bt_le_per_adv_sync_transfer_param param = {0};
-	int err;
-
-	param.skip = PA_SYNC_SKIP;
-	param.timeout = interval_to_sync_timeout(pa_interval);
-
-	err = bt_le_per_adv_sync_transfer_subscribe(conn, &param);
-	if (err != 0) {
-		printk("Could not do PAST subscribe: %d\n", err);
-	} else {
-		printk("Syncing with PAST\n");
-		(void)k_work_reschedule(&pa_timer, K_MSEC(param.timeout * 10));
-	}
-
-	return err;
-}
-
-static void recv_state_updated_cb(struct bt_conn *conn,
-				  const struct bt_bap_scan_delegator_recv_state *recv_state)
-{
-	printk("Receive state updated, pa sync state: %u\n", recv_state->pa_sync_state);
-
-	for (uint8_t i = 0; i < recv_state->num_subgroups; i++) {
-		printk("subgroup %d bis_sync: 0x%08x\n", i, recv_state->subgroups[i].bis_sync);
-	}
-
-	req_recv_state = recv_state;
-}
-
-static int pa_sync_req_cb(struct bt_conn *conn,
-			  const struct bt_bap_scan_delegator_recv_state *recv_state,
-			  bool past_avail, uint16_t pa_interval)
-{
-
-	printk("Received request to sync to PA (PAST %savailble): %u\n", past_avail ? "" : "not ",
-	       recv_state->pa_sync_state);
-
-	req_recv_state = recv_state;
-
-	if (recv_state->pa_sync_state == BT_BAP_PA_STATE_SYNCED ||
-	    recv_state->pa_sync_state == BT_BAP_PA_STATE_INFO_REQ) {
-		/* Already syncing */
-		/* TODO: Terminate existing sync and then sync to new?*/
-		return -1;
-	}
-
-	if (IS_ENABLED(CONFIG_BT_PER_ADV_SYNC_TRANSFER_RECEIVER) && past_avail) {
-		int err;
-
-		err = pa_sync_past(conn, pa_interval);
-		if (err != 0) {
-			printk("Failed to subscribe to PAST: %d\n", err);
-
-			return err;
-		}
-
-		k_sem_give(&sem_past_request);
-
-		err = bt_bap_scan_delegator_set_pa_state(recv_state->src_id,
-							 BT_BAP_PA_STATE_INFO_REQ);
-		if (err != 0) {
-			printk("Failed to set PA state to BT_BAP_PA_STATE_INFO_REQ: %d\n", err);
-
-			return err;
-		}
-	}
-
-	k_sem_give(&sem_pa_request);
-
-	return 0;
-}
-
-static int pa_sync_term_req_cb(struct bt_conn *conn,
-			       const struct bt_bap_scan_delegator_recv_state *recv_state)
-{
-	int err;
-
-	printk("PA sync termination req, pa sync state: %u\n", recv_state->pa_sync_state);
-
-	for (uint8_t i = 0; i < recv_state->num_subgroups; i++) {
-		printk("subgroup %d bis_sync: 0x%08x\n", i, recv_state->subgroups[i].bis_sync);
-	}
-
-	req_recv_state = recv_state;
-
-	printk("Delete periodic advertising sync\n");
-	err = bt_le_per_adv_sync_delete(pa_sync);
-	if (err != 0) {
-		printk("Could not delete per adv sync: %d\n", err);
-
-		return err;
-	}
-
-	return 0;
-}
-
-static void broadcast_code_cb(struct bt_conn *conn,
-			      const struct bt_bap_scan_delegator_recv_state *recv_state,
-			      const uint8_t broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE])
-{
-	printk("Broadcast code received for %p\n", recv_state);
-
-	req_recv_state = recv_state;
-
-	(void)memcpy(sink_broadcast_code, broadcast_code, BT_AUDIO_BROADCAST_CODE_SIZE);
-
-	/* Use the semaphore as a boolean */
-	k_sem_reset(&sem_broadcast_code_received);
-	k_sem_give(&sem_broadcast_code_received);
-}
-
-static int bis_sync_req_cb(struct bt_conn *conn,
-			   const struct bt_bap_scan_delegator_recv_state *recv_state,
-			   const uint32_t bis_sync_req[CONFIG_BT_BAP_BASS_MAX_SUBGROUPS])
-{
-	printk("BIS sync request received for %p: 0x%08x->0x%08x, broadcast id: 0x%06x, (%s)\n",
-	       recv_state, requested_bis_sync, bis_sync_req[0], recv_state->broadcast_id,
-	       big_synced ? "BIG synced" : "BIG not synced");
-
-	/* We only care about a single subgroup in this sample */
-	if (big_synced && requested_bis_sync != bis_sync_req[0]) {
-		/* If the BIS sync request is received while we are already
-		 * synced, it means that the requested BIS sync has changed.
-		 */
-		int err;
-
-		/* The stream stopped callback will be called as part of this,
-		 * and we do not need to wait for any events from the
-		 * controller. Thus, when this returns, the `big_synced`
-		 * is back to false.
-		 */
-		err = bt_bap_broadcast_sink_stop(broadcast_sink);
-		if (err != 0) {
-			printk("Failed to stop Broadcast Sink: %d\n", err);
-
-			return err;
-		}
-
-		k_sem_give(&sem_broadcast_sink_stopped);
-	}
-
-	requested_bis_sync = bis_sync_req[0];
-	broadcaster_broadcast_id = recv_state->broadcast_id;
-	if (bis_sync_req[0] != 0) {
-		k_sem_give(&sem_bis_sync_requested);
-	}
-
-	return 0;
-}
-
-static struct bt_bap_scan_delegator_cb scan_delegator_cbs = {
-	.recv_state_updated = recv_state_updated_cb,
-	.pa_sync_req = pa_sync_req_cb,
-	.pa_sync_term_req = pa_sync_term_req_cb,
-	.broadcast_code = broadcast_code_cb,
-	.bis_sync_req = bis_sync_req_cb,
-};
-
 static struct bt_pacs_cap cap = {
 	.codec_cap = &codec_cap,
 };
@@ -461,6 +244,7 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		printk("PBA:\n");
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_ENCRYPTION) {
 			printk("\tEncrypted\n");
+			test_values_big_dut.encryption = true;
 		}
 
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_STANDARD_QUALITY) {
@@ -497,7 +281,10 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		/* Store info for PA sync parameters */
 		memcpy(&broadcaster_info, info, sizeof(broadcaster_info));
 		bt_addr_le_copy(&broadcaster_addr, info->addr);
-		printk("broadcaster_broadcast_id = 0x%06X\n", broadcaster_broadcast_id);
+		test_values_big_dut.broadcast_id = broadcaster_broadcast_id;
+		printk("Broadcaster_id = 0x%06X\n", test_values_big_dut.broadcast_id);
+		printk("Broadcast_name: %s\n", test_values_big_dut.broadcast_name);
+		printk("Adv_name: %s\n", test_values_big_dut.adv_name);
 		k_sem_give(&sem_broadcaster_found);
 
 		return false;
@@ -528,16 +315,59 @@ static bool is_substring(const char *substr, const char *str)
 	return false;
 }
 
+static bool names_store(struct bt_data *data, void *user_data)
+{
+	switch (data->type) {
+	case BT_DATA_NAME_SHORTENED:
+	case BT_DATA_NAME_COMPLETE:
+		if (data->data_len <= ADV_NAME_MAX) {
+			memset(test_values_big_dut.adv_name, '\0',
+			       sizeof(test_values_big_dut.adv_name));
+			memcpy(test_values_big_dut.adv_name, data->data, data->data_len);
+		} else {
+			printk("Adv name too long\n");
+		}
+
+	case BT_DATA_BROADCAST_NAME:
+		if (data->data_len <= sizeof(CONFIG_TARGET_BROADCAST_NAME)) {
+			memset(test_values_big_dut.broadcast_name, '\0',
+			       sizeof(test_values_big_dut.broadcast_name));
+			memcpy(test_values_big_dut.broadcast_name, data->data, data->data_len);
+		} else {
+			printk("Broadcast name too long\n");
+		}
+
+		return true;
+	default:
+		return true;
+	}
+}
+
 static bool data_cb(struct bt_data *data, void *user_data)
 {
-	char *name = user_data;
+	bool *device_found = user_data;
+	char name[NAME_LEN] = {0};
 
 	switch (data->type) {
 	case BT_DATA_NAME_SHORTENED:
 	case BT_DATA_NAME_COMPLETE:
+		if (data->data_len <= ADV_NAME_MAX) {
+			memset(test_values_big_dut.adv_name, '\0',
+			       sizeof(test_values_big_dut.adv_name));
+			memcpy(test_values_big_dut.adv_name, data->data, data->data_len);
+		} else {
+			printk("Adv name too long\n");
+		}
+
 	case BT_DATA_BROADCAST_NAME:
 		memcpy(name, data->data, MIN(data->data_len, NAME_LEN - 1));
-		return false;
+
+		if ((is_substring(CONFIG_TARGET_BROADCAST_NAME, name))) {
+			/* Device found */
+			*device_found = true;
+			return false;
+		}
+		return true;
 	default:
 		return true;
 	}
@@ -548,19 +378,20 @@ static void broadcast_scan_recv(const struct bt_le_scan_recv_info *info, struct 
 	if (info->interval != 0U) {
 		/* call to bt_data_parse consumes netbufs so shallow clone for verbose output */
 
-		/* If req_recv_state is not NULL then we have been requested by a broadcast
-		 * assistant to sync to a specific broadcast source. In that case we do not apply
-		 * our own broadcast name filter.
-		 */
-		if (req_recv_state == NULL && strlen(CONFIG_TARGET_BROADCAST_NAME) > 0U) {
+		if (strlen(CONFIG_TARGET_BROADCAST_NAME) > 0U) {
+			bool device_found = false;
 			struct net_buf_simple buf_copy;
-			char name[NAME_LEN] = {0};
+			struct net_buf_simple buf_copy_copy;
 
 			net_buf_simple_clone(ad, &buf_copy);
-			bt_data_parse(&buf_copy, data_cb, name);
-			if (!(is_substring(CONFIG_TARGET_BROADCAST_NAME, name))) {
+			net_buf_simple_clone(ad, &buf_copy_copy);
+			bt_data_parse(&buf_copy, data_cb, &device_found);
+
+			if (!device_found) {
 				return;
 			}
+
+			bt_data_parse(&buf_copy_copy, names_store, NULL);
 		}
 		bt_data_parse(ad, scan_check_and_sync_broadcast, (void *)info);
 	}
@@ -573,9 +404,7 @@ static struct bt_le_scan_cb bap_scan_cb = {
 static void bap_pa_sync_synced_cb(struct bt_le_per_adv_sync *sync,
 				  struct bt_le_per_adv_sync_synced_info *info)
 {
-	if (sync == pa_sync ||
-	    (req_recv_state != NULL && bt_addr_le_eq(info->addr, &req_recv_state->addr) &&
-	     info->sid == req_recv_state->adv_sid)) {
+	if (sync == pa_sync) {
 		printk("PA sync %p synced for broadcast sink with broadcast ID 0x%06X\n", sync,
 		       broadcaster_broadcast_id);
 
@@ -583,7 +412,6 @@ static void bap_pa_sync_synced_cb(struct bt_le_per_adv_sync *sync,
 			pa_sync = sync;
 		}
 
-		k_work_cancel_delayable(&pa_timer);
 		k_sem_give(&sem_pa_synced);
 	}
 }
@@ -623,7 +451,6 @@ static int init(void)
 	}
 
 	bt_bap_broadcast_sink_register_cb(&broadcast_sink_cbs);
-	bt_bap_scan_delegator_register_cb(&scan_delegator_cbs);
 	bt_le_per_adv_sync_cb_register(&bap_pa_sync_cb);
 	bt_le_scan_cb_register(&bap_scan_cb);
 
@@ -642,7 +469,6 @@ static int reset(void)
 
 	bis_index_bitfield = 0U;
 	requested_bis_sync = 0U;
-	req_recv_state = NULL;
 	big_synced = false;
 	base_received = false;
 	stream_count = 0U;
@@ -685,6 +511,21 @@ static int reset(void)
 	k_sem_reset(&sem_broadcast_sink_stopped);
 
 	return 0;
+}
+
+static uint16_t interval_to_sync_timeout(uint16_t interval)
+{
+	uint32_t interval_ms;
+	uint32_t timeout;
+
+	/* Add retries and convert to unit in 10's of ms */
+	interval_ms = BT_GAP_PER_ADV_INTERVAL_TO_MS(interval);
+	timeout = (interval_ms * PA_SYNC_INTERVAL_TO_TIMEOUT_RATIO) / 10;
+
+	/* Enforce restraints */
+	timeout = CLAMP(timeout, BT_GAP_PER_ADV_MIN_TIMEOUT, BT_GAP_PER_ADV_MAX_TIMEOUT);
+
+	return (uint16_t)timeout;
 }
 
 static int pa_sync_create(void)

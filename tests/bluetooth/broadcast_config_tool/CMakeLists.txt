@@ -9,3 +9,5 @@ target_sources(app PRIVATE
 )
 
 zephyr_library_include_directories(${ZEPHYR_BASE}/samples/bluetooth)
+zephyr_library_include_directories(app PRIVATE
+    ${ZEPHYR_NRF_MODULE_DIR}/tests/bluetooth/broadcast_config_tool/include)
