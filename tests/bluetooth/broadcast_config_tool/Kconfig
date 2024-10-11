@@ -34,4 +34,17 @@ config MAX_CODEC_FRAMES_PER_SDU
 	  Maximum number of codec frames per SDU supported by this device. Increasing this value
 	  allows support for a greater variaty of broadcasts, but also increases memory usage.
 
+menu "Logging"
+
+module = MAIN
+module-str = main
+source "subsys/logging/Kconfig.template.log_config"
+
+config PRINT_STACK_USAGE_MS
+	depends on THREAD_ANALYZER && INIT_STACKS
+	int "Print stack usage every x milliseconds"
+	default 5000
+
+endmenu # Log levels
+
 source "Kconfig.zephyr"
