@@ -14,6 +14,7 @@
 #include <zephyr/bluetooth/audio/pacs.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/audio/pbp.h>
+#include <zephyr/shell/shell.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, CONFIG_MAIN_LOG_LEVEL);
@@ -306,6 +307,8 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 
 				memcpy(program_info, data, ret);
 				LOG_INF("\t\tProgram info: %s", program_info);
+				memcpy(test_values_big_dut.subgroups[info.sub_index].program_info,
+				       program_info, sizeof(program_info));
 			}
 
 			ret = bt_audio_codec_cfg_meta_get_stream_lang(&codec_cfg);
@@ -316,6 +319,8 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 
 				LOG_INF("\t\tLanguage: %c%c%c", (char)lang_array[0],
 					(char)lang_array[1], (char)lang_array[2]);
+				memcpy(test_values_big_dut.subgroups[info.sub_index].language,
+				       lang_array, sizeof(lang_array));
 			}
 
 			ret = bt_audio_codec_cfg_meta_get_parental_rating(&codec_cfg);
@@ -335,6 +340,8 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 			if (ret >= 0) {
 				LOG_INF("\t\tImmediate rendering flag: %s",
 					ret == 0 ? "enabled" : "disabled");
+				test_values_big_dut.subgroups[info.sub_index].immediate_rend_flag =
+					ret == 0 ? true : false;
 			}
 		}
 	}
@@ -468,6 +475,13 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		LOG_INF("Broadcaster_id = 0x%06X", test_values_big_dut.broadcast_id);
 		LOG_INF("Broadcast_name: %s", test_values_big_dut.broadcast_name);
 		LOG_INF("Adv_name: %s", test_values_big_dut.adv_name);
+		test_values_big_dut.phy = info->secondary_phy;
+		if (test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_1M ||
+		    test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_2M) {
+			LOG_INF("PHY: %dM", test_values_big_dut.phy);
+		} else if (test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_CODED) {
+			LOG_INF("PHY: LE Coded");
+		}
 		k_sem_give(&sem_broadcaster_found);
 
 		return false;
@@ -870,3 +884,124 @@ int main(void)
 
 	return 0;
 }
+
+static int cmd_big_input(const struct shell *shell, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc < 9) {
+		shell_error(shell, "<adv_name (string)> <broadcast_name (string)> <broadcast_id (6 "
+				   "octets)> <phy (1, 2, or 4 (coded))> <pd_us (uint32_t)> "
+				   "<encryption (0/1)> <broadcast_code (16 chars)> <num_subgroups "
+				   "(uint8_t)>");
+		return -EINVAL;
+	}
+
+	memset(test_values_big_expected.adv_name, '\0', sizeof(test_values_big_expected.adv_name));
+	memcpy(test_values_big_expected.adv_name, argv[1], strlen(argv[1]));
+
+	memset(test_values_big_expected.broadcast_name, '\0',
+	       sizeof(test_values_big_expected.broadcast_name));
+	memcpy(test_values_big_expected.broadcast_name, argv[2], strlen(argv[2]));
+
+	test_values_big_expected.broadcast_id = (uint32_t)strtol(argv[3], NULL, 16);
+	test_values_big_expected.phy = strtol(argv[4], NULL, 10);
+	test_values_big_expected.pd_us = strtol(argv[5], NULL, 10);
+	test_values_big_expected.encryption = strtol(argv[6], NULL, 10);
+
+	memset(test_values_big_expected.broadcast_code, '\0',
+	       sizeof(test_values_big_expected.broadcast_code));
+	memcpy(test_values_big_expected.broadcast_code, argv[7], strlen(argv[7]));
+
+	return 0;
+}
+
+static int cmd_sub_input(const struct shell *shell, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc < 2) {
+		shell_error(shell,
+			    "<subgroup_index> <sampling_rate_hz (uint32_t)> <frame_duration_us "
+			    "(uint32_t)> "
+			    "<octets_per_frame (uint8_t)> <language (3 chars)> "
+			    "<immediate_rend_flag (0/1)> <context (uint16_t)> "
+			    "<program_info (string)> <num_bis (uint8_t)>");
+		return -EINVAL;
+	}
+
+	int subgroup_index = strtol(argv[1], NULL, 10);
+
+	if (subgroup_index >= CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT) {
+		shell_error(shell, "Invalid subgroup index");
+		return -EINVAL;
+	}
+
+	test_values_big_expected.subgroups[subgroup_index].sampling_rate_hz =
+		strtol(argv[2], NULL, 10);
+	test_values_big_expected.subgroups[subgroup_index].frame_duration_us =
+		strtol(argv[3], NULL, 10);
+	test_values_big_expected.subgroups[subgroup_index].octets_per_frame =
+		strtol(argv[4], NULL, 10);
+
+	memcpy(test_values_big_expected.subgroups[subgroup_index].language, argv[5], 3);
+
+	test_values_big_expected.subgroups[subgroup_index].immediate_rend_flag =
+		strtol(argv[6], NULL, 10);
+	test_values_big_expected.subgroups[subgroup_index].context = strtol(argv[7], NULL, 10);
+
+	memset(test_values_big_expected.subgroups[subgroup_index].program_info, '\0',
+	       sizeof(test_values_big_expected.subgroups[subgroup_index].program));
+	memcpy(test_values_big_expected.subgroups[subgroup_index].program_info, argv[8],
+	       strlen(argv[8]));
+
+	test_values_big_expected.subgroups[subgroup_index].num_bis = strtol(argv[9], NULL, 10);
+
+	return 0;
+}
+
+static int cmd_bis_location_input(const struct shell *shell, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc < 4) {
+		shell_error(shell, "<subgroup_index> <bis_index> <location (uint32_t)>");
+		return -EINVAL;
+	}
+
+	int subgroup_index = strtol(argv[1], NULL, 10);
+	int bis_index = strtol(argv[2], NULL, 10);
+
+	if (subgroup_index >= CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT) {
+		shell_error(shell, "Invalid subgroup index");
+		return -EINVAL;
+	}
+
+	if (bis_index >= CONFIG_BT_BAP_BROADCAST_SNK_BIS_COUNT) {
+		shell_error(shell, "Invalid BIS index");
+		return -EINVAL;
+	}
+
+	test_values_big_expected.subgroups[subgroup_index].locations[bis_index] =
+		strtol(argv[3], NULL, 10);
+
+	return 0;
+}
+
+static int cmd_run(const struct shell *shell, size_t argc, char **argv)
+{
+	/* Set target name */
+	/* Start scanning */
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(expected_cmd,
+			       SHELL_COND_CMD(CONFIG_SHELL, big_input, NULL, "Expected BIG values",
+					      cmd_big_input),
+			       SHELL_COND_CMD(CONFIG_SHELL, subgroup_input, NULL,
+					      "Expected subgroup values", cmd_sub_input),
+			       SHELL_COND_CMD(CONFIG_SHELL, bis_location_input, NULL,
+					      "Expected BIS location", cmd_bis_location_input),
+			       SHELL_COND_CMD(CONFIG_SHELL, run_test, NULL, "Run test", cmd_run),
+			       SHELL_SUBCMD_SET_END);
+
+SHELL_CMD_REGISTER(bct_test, &expected_cmd, "BCT tester", NULL);

@@ -13,32 +13,27 @@
 #define NAME_LEN     sizeof(CONFIG_TARGET_BROADCAST_NAME) + 1
 
 struct bct_test_values_subgroup {
-	uint8_t phy;
-	bool framed;
-	uint8_t rtn;
-	uint8_t sdu_size;
-	uint8_t mtl_ms;
-	uint32_t frame_interval_us;
-	uint32_t sampling_rate_hz;  /* Done */
-	uint32_t frame_duration_us; /* Done */
-	uint8_t octets_per_frame;   /* Done */
-	char language[4];	    /* Allow space for '\0' */
-	enum bt_audio_context context;
-	/* Program info : News bool immediate_rendering_flag; */
+	uint32_t sampling_rate_hz;     /* Done */
+	uint32_t frame_duration_us;    /* Done */
+	uint8_t octets_per_frame;      /* Done */
+	char language[4];	       /* Allow space for '\0' */
+	bool immediate_rend_flag;      /* Done */
+	enum bt_audio_context context; /* Done */
+	char program_info[255];	       /* Done */
 	uint8_t num_bis;
 	enum bt_audio_location locations[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 };
 
 struct bct_test_values_big {
-	struct bct_test_values_subgroup *subgroups;
-	uint8_t num_subgroups; /* Done */
-	uint8_t framing;
-	uint32_t pd_us;	 /* Done */
-	bool encryption; /* Done */
-	uint8_t broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE + 1];
 	char adv_name[ADV_NAME_MAX + 1];       /* Done */
 	char broadcast_name[ADV_NAME_MAX + 1]; /* Done */
 	uint32_t broadcast_id;		       /* Done */
+	uint8_t phy;			       /* Done */
+	uint32_t pd_us;			       /* Done */
+	bool encryption;		       /* Done */
+	uint8_t broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE + 1];
+	uint8_t num_subgroups; /* Done */
+	struct bct_test_values_subgroup *subgroups;
 };
 
 static inline char *chan_location_bit_to_str(enum bt_audio_location chan_allocation)
