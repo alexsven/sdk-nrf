@@ -6,6 +6,7 @@
  */
 
 #include <ctype.h>
+#include <stdlib.h>
 #include <strings.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -77,10 +78,10 @@ static struct bct_test_values_subgroup
 	subgroups_expected[CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT];
 static struct bct_test_values_subgroup subgroups_dut[CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT];
 
-static struct bct_test_values_big test_values_big_expected = {
+static struct bct_test_values_big expected = {
 	.subgroups = subgroups_expected,
 };
-static struct bct_test_values_big test_values_big_dut = {
+static struct bct_test_values_big dut = {
 	.subgroups = subgroups_dut,
 };
 
@@ -98,6 +99,8 @@ static const uint32_t bis_index_mask = BIT_MASK(ARRAY_SIZE(streams) + 1U);
 static uint32_t requested_bis_sync;
 static uint32_t bis_index_bitfield;
 static uint8_t sink_broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE];
+
+static char broadcast_name_target[ADV_NAME_MAX + 1];
 
 uint64_t total_rx_iso_packet_count; /* This value is exposed to test code */
 
@@ -183,10 +186,9 @@ static bool print_base_subgroup_bis_cb(const struct bt_bap_base_subgroup_bis *bi
 
 	ret = bt_bap_base_subgroup_bis_codec_to_codec_cfg(bis, &codec_cfg);
 
-	ret = bt_audio_codec_cfg_get_chan_allocation(&codec_cfg, &chan_allocation);
+	ret = bt_audio_codec_cfg_get_chan_allocation(&codec_cfg, &chan_allocation, false);
 	if (ret >= 0) {
-		test_values_big_dut.subgroups[info->sub_index].locations[info->bis_index] =
-			chan_allocation;
+		dut.subgroups[info->sub_index].locations[info->bis_index] = chan_allocation;
 
 		if (chan_allocation == BT_AUDIO_LOCATION_MONO_AUDIO) {
 			LOG_INF("\t\t\tBIS %d: Mono", info->bis_index);
@@ -241,29 +243,25 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 
 			ret = bt_audio_codec_cfg_get_freq(&codec_cfg);
 			if (ret >= 0) {
-				test_values_big_dut.subgroups[info.sub_index].sampling_rate_hz =
+				dut.subgroups[info.sub_index].sampling_rate_hz =
 					bt_audio_codec_cfg_freq_to_freq_hz(ret);
 				LOG_INF("\t\tSampling rate: %u Hz",
-					test_values_big_dut.subgroups[info.sub_index]
-						.sampling_rate_hz);
+					dut.subgroups[info.sub_index].sampling_rate_hz);
 			}
 
 			ret = bt_audio_codec_cfg_get_frame_dur(&codec_cfg);
 			if (ret >= 0) {
-				test_values_big_dut.subgroups[info.sub_index].frame_duration_us =
+				dut.subgroups[info.sub_index].frame_duration_us =
 					bt_audio_codec_cfg_frame_dur_to_frame_dur_us(ret);
 				LOG_INF("\t\tFrame duration: %u us",
-					test_values_big_dut.subgroups[info.sub_index]
-						.frame_duration_us);
+					dut.subgroups[info.sub_index].frame_duration_us);
 			}
 
 			ret = bt_audio_codec_cfg_get_octets_per_frame(&codec_cfg);
 			if (ret >= 0) {
-				test_values_big_dut.subgroups[info.sub_index].octets_per_frame =
-					(uint16_t)ret;
+				dut.subgroups[info.sub_index].octets_per_frame = (uint16_t)ret;
 				LOG_INF("\t\tOctets per frame: %u",
-					test_values_big_dut.subgroups[info.sub_index]
-						.octets_per_frame);
+					dut.subgroups[info.sub_index].octets_per_frame);
 			}
 
 			LOG_INF("\t\tLocation:");
@@ -286,7 +284,7 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 
 			ret = bt_audio_codec_cfg_meta_get_stream_context(&codec_cfg);
 			if (ret >= 0) {
-				test_values_big_dut.subgroups[info.sub_index].context = ret;
+				dut.subgroups[info.sub_index].context = ret;
 				for (size_t i = 0U; i < 16; i++) {
 					const uint16_t bit_val = BIT(i);
 
@@ -307,20 +305,17 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 
 				memcpy(program_info, data, ret);
 				LOG_INF("\t\tProgram info: %s", program_info);
-				memcpy(test_values_big_dut.subgroups[info.sub_index].program_info,
-				       program_info, sizeof(program_info));
+				memcpy(dut.subgroups[info.sub_index].program_info, program_info,
+				       sizeof(program_info));
 			}
 
-			ret = bt_audio_codec_cfg_meta_get_stream_lang(&codec_cfg);
-			if (ret >= 0) {
-				uint8_t lang_array[3];
+			const uint8_t *lang;
 
-				sys_put_le24(ret, lang_array);
-
-				LOG_INF("\t\tLanguage: %c%c%c", (char)lang_array[0],
-					(char)lang_array[1], (char)lang_array[2]);
-				memcpy(test_values_big_dut.subgroups[info.sub_index].language,
-				       lang_array, sizeof(lang_array));
+			ret = bt_audio_codec_cfg_meta_get_lang(&codec_cfg, &lang);
+			if (ret == 0) {
+				LOG_INF("\t\tLanguage: %c%c%c", (char)lang[0], (char)lang[1],
+					(char)lang[2]);
+				memcpy(dut.subgroups[info.sub_index].language, lang, 3);
 			}
 
 			ret = bt_audio_codec_cfg_meta_get_parental_rating(&codec_cfg);
@@ -340,7 +335,7 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 			if (ret >= 0) {
 				LOG_INF("\t\tImmediate rendering flag: %s",
 					ret == 0 ? "enabled" : "disabled");
-				test_values_big_dut.subgroups[info.sub_index].immediate_rend_flag =
+				dut.subgroups[info.sub_index].immediate_rend_flag =
 					ret == 0 ? true : false;
 			}
 		}
@@ -356,9 +351,9 @@ static inline void print_base(const struct bt_bap_base *base)
 	int err;
 
 	LOG_INF("Presentation delay: %d", bt_bap_base_get_pres_delay(base));
-	test_values_big_dut.pd_us = bt_bap_base_get_pres_delay(base);
+	dut.pd_us = bt_bap_base_get_pres_delay(base);
 
-	test_values_big_dut.num_subgroups = bt_bap_base_get_subgroup_count(base);
+	dut.num_subgroups = bt_bap_base_get_subgroup_count(base);
 
 	uint8_t sub_index = 0;
 
@@ -451,7 +446,7 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		LOG_INF("PBA:");
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_ENCRYPTION) {
 			LOG_INF("\tEncrypted");
-			test_values_big_dut.encryption = true;
+			dut.encryption = true;
 		}
 
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_STANDARD_QUALITY) {
@@ -471,15 +466,14 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		/* Store info for PA sync parameters */
 		memcpy(&broadcaster_info, info, sizeof(broadcaster_info));
 		bt_addr_le_copy(&broadcaster_addr, info->addr);
-		test_values_big_dut.broadcast_id = broadcaster_broadcast_id;
-		LOG_INF("Broadcaster_id = 0x%06X", test_values_big_dut.broadcast_id);
-		LOG_INF("Broadcast_name: %s", test_values_big_dut.broadcast_name);
-		LOG_INF("Adv_name: %s", test_values_big_dut.adv_name);
-		test_values_big_dut.phy = info->secondary_phy;
-		if (test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_1M ||
-		    test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_2M) {
-			LOG_INF("PHY: %dM", test_values_big_dut.phy);
-		} else if (test_values_big_dut.phy == BT_AUDIO_CODEC_QOS_CODED) {
+		dut.broadcast_id = broadcaster_broadcast_id;
+		LOG_INF("Broadcaster_id = 0x%06X", dut.broadcast_id);
+		LOG_INF("Broadcast_name: %s", dut.broadcast_name);
+		LOG_INF("Adv_name: %s", dut.adv_name);
+		dut.phy = info->secondary_phy;
+		if (dut.phy == BT_AUDIO_CODEC_QOS_1M || dut.phy == BT_AUDIO_CODEC_QOS_2M) {
+			LOG_INF("PHY: %dM", dut.phy);
+		} else if (dut.phy == BT_AUDIO_CODEC_QOS_CODED) {
 			LOG_INF("PHY: LE Coded");
 		}
 		k_sem_give(&sem_broadcaster_found);
@@ -518,18 +512,16 @@ static bool names_store(struct bt_data *data, void *user_data)
 	case BT_DATA_NAME_SHORTENED:
 	case BT_DATA_NAME_COMPLETE:
 		if (data->data_len <= ADV_NAME_MAX) {
-			memset(test_values_big_dut.adv_name, '\0',
-			       sizeof(test_values_big_dut.adv_name));
-			memcpy(test_values_big_dut.adv_name, data->data, data->data_len);
+			memset(dut.adv_name, '\0', sizeof(dut.adv_name));
+			memcpy(dut.adv_name, data->data, data->data_len);
 		} else {
 			LOG_INF("Adv name too long");
 		}
 
 	case BT_DATA_BROADCAST_NAME:
 		if (data->data_len <= ADV_NAME_MAX) {
-			memset(test_values_big_dut.broadcast_name, '\0',
-			       sizeof(test_values_big_dut.broadcast_name));
-			memcpy(test_values_big_dut.broadcast_name, data->data, data->data_len);
+			memset(dut.broadcast_name, '\0', sizeof(dut.broadcast_name));
+			memcpy(dut.broadcast_name, data->data, data->data_len);
 		} else {
 			LOG_INF("Broadcast name too long");
 		}
@@ -543,23 +535,22 @@ static bool names_store(struct bt_data *data, void *user_data)
 static bool data_cb(struct bt_data *data, void *user_data)
 {
 	bool *device_found = user_data;
-	char name[NAME_LEN] = {0};
+	char name[ADV_NAME_MAX] = {0};
 
 	switch (data->type) {
 	case BT_DATA_NAME_SHORTENED:
 	case BT_DATA_NAME_COMPLETE:
 		if (data->data_len <= ADV_NAME_MAX) {
-			memset(test_values_big_dut.adv_name, '\0',
-			       sizeof(test_values_big_dut.adv_name));
-			memcpy(test_values_big_dut.adv_name, data->data, data->data_len);
+			memset(dut.adv_name, '\0', sizeof(dut.adv_name));
+			memcpy(dut.adv_name, data->data, data->data_len);
 		} else {
 			LOG_INF("Adv name too long");
 		}
 
 	case BT_DATA_BROADCAST_NAME:
-		memcpy(name, data->data, MIN(data->data_len, NAME_LEN - 1));
+		memcpy(name, data->data, MIN(data->data_len, ADV_NAME_MAX - 1));
 
-		if ((is_substring(CONFIG_TARGET_BROADCAST_NAME, name))) {
+		if ((is_substring(broadcast_name_target, name))) {
 			/* Device found */
 			*device_found = true;
 			return false;
@@ -577,7 +568,7 @@ static void broadcast_scan_recv(const struct bt_le_scan_recv_info *info, struct 
 		 * output
 		 */
 
-		if (strlen(CONFIG_TARGET_BROADCAST_NAME) > 0U) {
+		if (strlen(broadcast_name_target) > 0U) {
 			bool device_found = false;
 			struct net_buf_simple buf_copy;
 			struct net_buf_simple buf_copy_copy;
@@ -635,6 +626,8 @@ static int init(void)
 {
 	int err;
 
+	memset(broadcast_name_target, '\0', sizeof(broadcast_name_target));
+
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_INF("Bluetooth enable failed (err %d)", err);
@@ -666,6 +659,7 @@ static int reset(void)
 
 	LOG_INF("Reset");
 
+	memset(broadcast_name_target, '\0', sizeof(broadcast_name_target));
 	bis_index_bitfield = 0U;
 	requested_bis_sync = 0U;
 	big_synced = false;
@@ -740,6 +734,100 @@ static int pa_sync_create(void)
 	return bt_le_per_adv_sync_create(&create_params, &pa_sync);
 }
 
+static void values_compare(void)
+{
+	if (strcmp(expected.adv_name, dut.adv_name) != 0) {
+		LOG_WRN("Expected adv_name: %s, received: %s", expected.adv_name, dut.adv_name);
+	}
+
+	if (strcmp(expected.broadcast_name, dut.broadcast_name) != 0) {
+		LOG_WRN("Expected broadcast_name: %s, received: %s", expected.broadcast_name,
+			dut.broadcast_name);
+	}
+
+	if (expected.broadcast_id != dut.broadcast_id) {
+		LOG_WRN("Expected broadcast_id: 0x%06X, received: 0x%06X", expected.broadcast_id,
+			dut.broadcast_id);
+	}
+
+	if (expected.phy != dut.phy) {
+		LOG_WRN("Expected phy: %d, received: %d", expected.phy, dut.phy);
+	}
+
+	if (expected.encryption != dut.encryption) {
+		LOG_WRN("Expected encryption: %d, received: %d", expected.encryption,
+			dut.encryption);
+	}
+
+	if (expected.num_subgroups != dut.num_subgroups) {
+		LOG_WRN("Expected num_subgroups: %d, received: %d", expected.num_subgroups,
+			dut.num_subgroups);
+	}
+
+	for (size_t i = 0U; i < dut.num_subgroups; i++) {
+		if (expected.subgroups[i].sampling_rate_hz != dut.subgroups[i].sampling_rate_hz) {
+			LOG_WRN("Expected sampling rate: %u Hz, received: %u Hz",
+				expected.subgroups[i].sampling_rate_hz,
+				dut.subgroups[i].sampling_rate_hz);
+		}
+
+		if (expected.subgroups[i].frame_duration_us != dut.subgroups[i].frame_duration_us) {
+			LOG_WRN("Expected frame duration: %u us, received: %u us",
+				expected.subgroups[i].frame_duration_us,
+				dut.subgroups[i].frame_duration_us);
+		}
+
+		if (expected.subgroups[i].octets_per_frame != dut.subgroups[i].octets_per_frame) {
+			LOG_WRN("Expected octets per frame: %u, received: %u",
+				expected.subgroups[i].octets_per_frame,
+				dut.subgroups[i].octets_per_frame);
+		}
+
+		if (strcmp(expected.subgroups[i].language, dut.subgroups[i].language) != 0) {
+			LOG_WRN("Expected language: %s, received: %s",
+				expected.subgroups[i].language, dut.subgroups[i].language);
+		}
+
+		if (expected.subgroups[i].immediate_rend_flag !=
+		    dut.subgroups[i].immediate_rend_flag) {
+			LOG_WRN("Expected immediate_rend_flag: %d, received: %d",
+				expected.subgroups[i].immediate_rend_flag,
+				dut.subgroups[i].immediate_rend_flag);
+		}
+
+		if (expected.subgroups[i].context != dut.subgroups[i].context) {
+			LOG_WRN("Expected context: 0x%04X, received: 0x%04X",
+				expected.subgroups[i].context, dut.subgroups[i].context);
+		}
+
+		if (expected.subgroups[i].immediate_rend_flag !=
+		    dut.subgroups[i].immediate_rend_flag) {
+			LOG_WRN("Expected immediate_rend_flag: %d, received: %d",
+				expected.subgroups[i].immediate_rend_flag,
+				dut.subgroups[i].immediate_rend_flag);
+		}
+
+		if (strcmp(expected.subgroups[i].program_info, dut.subgroups[i].program_info) !=
+		    0) {
+			LOG_WRN("Expected program info: %s, received: %s",
+				expected.subgroups[i].program_info, dut.subgroups[i].program_info);
+		}
+
+		if (expected.subgroups[i].num_bis != dut.subgroups[i].num_bis) {
+			LOG_WRN("Expected num_bis: %d, received: %d", expected.subgroups[i].num_bis,
+				dut.subgroups[i].num_bis);
+		}
+
+		for (size_t j = 0U; j < dut.subgroups[i].num_bis; j++) {
+			if (expected.subgroups[i].locations[j] != dut.subgroups[i].locations[j]) {
+				LOG_WRN("Expected location: %d, received: %d",
+					expected.subgroups[i].locations[j],
+					dut.subgroups[i].locations[j]);
+			}
+		}
+	}
+}
+
 int main(void)
 {
 	int err;
@@ -761,19 +849,6 @@ int main(void)
 		if (err != 0) {
 			LOG_INF("Resetting failed: %d - Aborting", err);
 
-			return 0;
-		}
-
-		if (strlen(CONFIG_TARGET_BROADCAST_NAME) > 0U) {
-			LOG_INF("Scanning for broadcast sources containing "
-				"`" CONFIG_TARGET_BROADCAST_NAME "`");
-		} else {
-			LOG_INF("Scanning for broadcast sources");
-		}
-
-		err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
-		if (err != 0 && err != -EALREADY) {
-			LOG_INF("Unable to start scan for broadcast sources: %d", err);
 			return 0;
 		}
 
@@ -852,7 +927,8 @@ int main(void)
 			}
 		}
 
-		LOG_INF("Syncing to broadcast with bitfield: 0x%08x = 0x%08x (bis_index) & "
+		LOG_INF("Syncing to broadcast with bitfield: 0x%08x = 0x%08x "
+			"(bis_index) & "
 			"0x%08x "
 			"(req_bis_sync), stream_count = %u",
 			sync_bitfield, bis_index_bitfield, requested_bis_sync, stream_count);
@@ -871,6 +947,8 @@ int main(void)
 			continue;
 		}
 
+		values_compare();
+
 		LOG_INF("Waiting for PA disconnected");
 		k_sem_take(&sem_pa_sync_lost, K_FOREVER);
 
@@ -887,46 +965,42 @@ int main(void)
 
 static int cmd_big_input(const struct shell *shell, size_t argc, char **argv)
 {
-	int ret;
-
 	if (argc < 9) {
-		shell_error(shell, "<adv_name (string)> <broadcast_name (string)> <broadcast_id (6 "
+		shell_error(shell, "<adv_name (string)> <broadcast_name (string)> "
+				   "<broadcast_id (6 "
 				   "octets)> <phy (1, 2, or 4 (coded))> <pd_us (uint32_t)> "
-				   "<encryption (0/1)> <broadcast_code (16 chars)> <num_subgroups "
+				   "<encryption (0/1)> <broadcast_code (16 chars)> "
+				   "<num_subgroups "
 				   "(uint8_t)>");
 		return -EINVAL;
 	}
 
-	memset(test_values_big_expected.adv_name, '\0', sizeof(test_values_big_expected.adv_name));
-	memcpy(test_values_big_expected.adv_name, argv[1], strlen(argv[1]));
+	memset(expected.adv_name, '\0', sizeof(expected.adv_name));
+	memcpy(expected.adv_name, argv[1], strlen(argv[1]));
 
-	memset(test_values_big_expected.broadcast_name, '\0',
-	       sizeof(test_values_big_expected.broadcast_name));
-	memcpy(test_values_big_expected.broadcast_name, argv[2], strlen(argv[2]));
+	memset(expected.broadcast_name, '\0', sizeof(expected.broadcast_name));
+	memcpy(expected.broadcast_name, argv[2], strlen(argv[2]));
 
-	test_values_big_expected.broadcast_id = (uint32_t)strtol(argv[3], NULL, 16);
-	test_values_big_expected.phy = strtol(argv[4], NULL, 10);
-	test_values_big_expected.pd_us = strtol(argv[5], NULL, 10);
-	test_values_big_expected.encryption = strtol(argv[6], NULL, 10);
+	expected.broadcast_id = (uint32_t)strtol(argv[3], NULL, 16);
+	expected.phy = strtol(argv[4], NULL, 10);
+	expected.pd_us = strtol(argv[5], NULL, 10);
+	expected.encryption = strtol(argv[6], NULL, 10);
 
-	memset(test_values_big_expected.broadcast_code, '\0',
-	       sizeof(test_values_big_expected.broadcast_code));
-	memcpy(test_values_big_expected.broadcast_code, argv[7], strlen(argv[7]));
+	memset(expected.broadcast_code, '\0', sizeof(expected.broadcast_code));
+	memcpy(expected.broadcast_code, argv[7], strlen(argv[7]));
 
 	return 0;
 }
 
 static int cmd_sub_input(const struct shell *shell, size_t argc, char **argv)
 {
-	int ret;
-
 	if (argc < 2) {
-		shell_error(shell,
-			    "<subgroup_index> <sampling_rate_hz (uint32_t)> <frame_duration_us "
-			    "(uint32_t)> "
-			    "<octets_per_frame (uint8_t)> <language (3 chars)> "
-			    "<immediate_rend_flag (0/1)> <context (uint16_t)> "
-			    "<program_info (string)> <num_bis (uint8_t)>");
+		shell_error(shell, "<subgroup_index> <sampling_rate_hz (uint32_t)> "
+				   "<frame_duration_us "
+				   "(uint32_t)> "
+				   "<octets_per_frame (uint8_t)> <language (3 chars)> "
+				   "<immediate_rend_flag (0/1)> <context (uint16_t)> "
+				   "<program_info (string)> <num_bis (uint8_t)>");
 		return -EINVAL;
 	}
 
@@ -937,33 +1011,26 @@ static int cmd_sub_input(const struct shell *shell, size_t argc, char **argv)
 		return -EINVAL;
 	}
 
-	test_values_big_expected.subgroups[subgroup_index].sampling_rate_hz =
-		strtol(argv[2], NULL, 10);
-	test_values_big_expected.subgroups[subgroup_index].frame_duration_us =
-		strtol(argv[3], NULL, 10);
-	test_values_big_expected.subgroups[subgroup_index].octets_per_frame =
-		strtol(argv[4], NULL, 10);
+	expected.subgroups[subgroup_index].sampling_rate_hz = strtol(argv[2], NULL, 10);
+	expected.subgroups[subgroup_index].frame_duration_us = strtol(argv[3], NULL, 10);
+	expected.subgroups[subgroup_index].octets_per_frame = strtol(argv[4], NULL, 10);
 
-	memcpy(test_values_big_expected.subgroups[subgroup_index].language, argv[5], 3);
+	memcpy(expected.subgroups[subgroup_index].language, argv[5], 3);
 
-	test_values_big_expected.subgroups[subgroup_index].immediate_rend_flag =
-		strtol(argv[6], NULL, 10);
-	test_values_big_expected.subgroups[subgroup_index].context = strtol(argv[7], NULL, 10);
+	expected.subgroups[subgroup_index].immediate_rend_flag = strtol(argv[6], NULL, 10);
+	expected.subgroups[subgroup_index].context = strtol(argv[7], NULL, 10);
 
-	memset(test_values_big_expected.subgroups[subgroup_index].program_info, '\0',
-	       sizeof(test_values_big_expected.subgroups[subgroup_index].program));
-	memcpy(test_values_big_expected.subgroups[subgroup_index].program_info, argv[8],
-	       strlen(argv[8]));
+	memset(expected.subgroups[subgroup_index].program_info, '\0',
+	       sizeof(expected.subgroups[subgroup_index].program_info));
+	memcpy(expected.subgroups[subgroup_index].program_info, argv[8], strlen(argv[8]));
 
-	test_values_big_expected.subgroups[subgroup_index].num_bis = strtol(argv[9], NULL, 10);
+	expected.subgroups[subgroup_index].num_bis = strtol(argv[9], NULL, 10);
 
 	return 0;
 }
 
 static int cmd_bis_location_input(const struct shell *shell, size_t argc, char **argv)
 {
-	int ret;
-
 	if (argc < 4) {
 		shell_error(shell, "<subgroup_index> <bis_index> <location (uint32_t)>");
 		return -EINVAL;
@@ -977,21 +1044,34 @@ static int cmd_bis_location_input(const struct shell *shell, size_t argc, char *
 		return -EINVAL;
 	}
 
-	if (bis_index >= CONFIG_BT_BAP_BROADCAST_SNK_BIS_COUNT) {
+	if (bis_index >= CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT) {
 		shell_error(shell, "Invalid BIS index");
 		return -EINVAL;
 	}
 
-	test_values_big_expected.subgroups[subgroup_index].locations[bis_index] =
-		strtol(argv[3], NULL, 10);
+	expected.subgroups[subgroup_index].locations[bis_index] = strtol(argv[3], NULL, 10);
 
 	return 0;
 }
 
 static int cmd_run(const struct shell *shell, size_t argc, char **argv)
 {
-	/* Set target name */
+	int err;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	if (broadcast_name_target[0] == '\0') {
+		LOG_INF("No broadcast name target set");
+		return -EINVAL;
+	}
+
 	/* Start scanning */
+	err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
+	if (err != 0 && err != -EALREADY) {
+		LOG_INF("Unable to start scan for broadcast sources: %d", err);
+		return 0;
+	}
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(expected_cmd,

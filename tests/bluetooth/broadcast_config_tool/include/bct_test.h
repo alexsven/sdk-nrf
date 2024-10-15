@@ -10,7 +10,6 @@
 #include <zephyr/bluetooth/audio/cap.h>
 
 #define ADV_NAME_MAX (28)
-#define NAME_LEN     sizeof(CONFIG_TARGET_BROADCAST_NAME) + 1
 
 struct bct_test_values_subgroup {
 	uint32_t sampling_rate_hz;     /* Done */
