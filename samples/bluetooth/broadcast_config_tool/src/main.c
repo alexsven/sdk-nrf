@@ -2038,6 +2038,7 @@ static void lecture_set(const struct shell *shell)
 	char *preset_argv[3] = {"preset", "24_2_1", "0"};
 	char *adv_name_argv[3] = {"adv_name", "Lecture hall", "0"};
 	char *name_argv[3] = {"name", "Lecture", "0"};
+	char *broadcast_id_argv[3] = {"fixed", "0", "0x123456"};
 	char *packing_argv[3] = {"packing", "int", "0"};
 
 	char *lang_argv[4] = {"lang_set", "eng", "0", "0"};
@@ -2053,6 +2054,7 @@ static void lecture_set(const struct shell *shell)
 	cmd_preset(shell, 3, preset_argv);
 	cmd_adv_name(shell, 3, adv_name_argv);
 	cmd_broadcast_name(shell, 3, name_argv);
+	cmd_fixed_id(shell, 3, broadcast_id_argv);
 	cmd_packing(shell, 3, packing_argv);
 
 	cmd_lang_set(shell, 4, lang_argv);

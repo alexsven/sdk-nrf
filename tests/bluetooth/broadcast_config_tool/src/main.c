@@ -30,6 +30,10 @@ BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
 
 #define LOG_INTERVAL 1000U
 
+#define COLOR_GREEN "\x1B[0;32m"
+#define COLOR_RED   "\x1B[0;31m"
+#define COLOR_RESET "\x1b[0m"
+
 #if defined(CONFIG_SCAN_SELF)
 #define ADV_TIMEOUT K_SECONDS(CONFIG_SCAN_DELAY)
 #else /* !CONFIG_SCAN_SELF */
@@ -264,6 +268,13 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 					dut.subgroups[info.sub_index].octets_per_frame);
 			}
 
+			ret = bt_bap_base_get_subgroup_bis_count(subgroup);
+			if (ret >= 0) {
+				dut.subgroups[info.sub_index].num_bis = (uint8_t)ret;
+				LOG_INF("\t\tNumber of BISes: %u",
+					dut.subgroups[info.sub_index].num_bis);
+			}
+
 			LOG_INF("\t\tLocation:");
 			ret = bt_bap_base_subgroup_foreach_bis(subgroup, print_base_subgroup_bis_cb,
 							       &info);
@@ -443,18 +454,16 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 
 	ret = bt_pbp_parse_announcement(data, &source_features, &tmp_meta);
 	if (ret >= 0) {
-		LOG_INF("PBA:");
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_ENCRYPTION) {
-			LOG_INF("\tEncrypted");
 			dut.encryption = true;
 		}
 
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_STANDARD_QUALITY) {
-			LOG_INF("\tStandard quality");
+			dut.std_quality = true;
 		}
 
 		if (source_features & BT_PBP_ANNOUNCEMENT_FEATURE_HIGH_QUALITY) {
-			LOG_INF("\tHigh quality");
+			dut.high_quality = true;
 		}
 
 		/* parse metadata */
@@ -467,15 +476,7 @@ static bool scan_check_and_sync_broadcast(struct bt_data *data, void *user_data)
 		memcpy(&broadcaster_info, info, sizeof(broadcaster_info));
 		bt_addr_le_copy(&broadcaster_addr, info->addr);
 		dut.broadcast_id = broadcaster_broadcast_id;
-		LOG_INF("Broadcaster_id = 0x%06X", dut.broadcast_id);
-		LOG_INF("Broadcast_name: %s", dut.broadcast_name);
-		LOG_INF("Adv_name: %s", dut.adv_name);
 		dut.phy = info->secondary_phy;
-		if (dut.phy == BT_AUDIO_CODEC_QOS_1M || dut.phy == BT_AUDIO_CODEC_QOS_2M) {
-			LOG_INF("PHY: %dM", dut.phy);
-		} else if (dut.phy == BT_AUDIO_CODEC_QOS_CODED) {
-			LOG_INF("PHY: LE Coded");
-		}
 		k_sem_give(&sem_broadcaster_found);
 
 		return false;
@@ -511,7 +512,7 @@ static bool names_store(struct bt_data *data, void *user_data)
 	switch (data->type) {
 	case BT_DATA_NAME_SHORTENED:
 	case BT_DATA_NAME_COMPLETE:
-		if (data->data_len <= ADV_NAME_MAX) {
+		if (data->data_len <= ADV_NAME_MAX && data->type == BT_DATA_NAME_COMPLETE) {
 			memset(dut.adv_name, '\0', sizeof(dut.adv_name));
 			memcpy(dut.adv_name, data->data, data->data_len);
 		} else {
@@ -519,7 +520,7 @@ static bool names_store(struct bt_data *data, void *user_data)
 		}
 
 	case BT_DATA_BROADCAST_NAME:
-		if (data->data_len <= ADV_NAME_MAX) {
+		if (data->data_len <= ADV_NAME_MAX && data->type == BT_DATA_BROADCAST_NAME) {
 			memset(dut.broadcast_name, '\0', sizeof(dut.broadcast_name));
 			memcpy(dut.broadcast_name, data->data, data->data_len);
 		} else {
@@ -736,96 +737,149 @@ static int pa_sync_create(void)
 
 static void values_compare(void)
 {
+	bool verdict = true;
+
+	LOG_INF("Results: ");
 	if (strcmp(expected.adv_name, dut.adv_name) != 0) {
-		LOG_WRN("Expected adv_name: %s, received: %s", expected.adv_name, dut.adv_name);
+		LOG_WRN("\tExpected adv_name: %s, received: %s", expected.adv_name, dut.adv_name);
+		verdict = false;
+	} else {
+		LOG_INF("\tAdv_name: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	if (strcmp(expected.broadcast_name, dut.broadcast_name) != 0) {
-		LOG_WRN("Expected broadcast_name: %s, received: %s", expected.broadcast_name,
+		LOG_WRN("\tExpected broadcast_name: %s, received: %s", expected.broadcast_name,
 			dut.broadcast_name);
+		verdict = false;
+	} else {
+		LOG_INF("\tBroadcast_name: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	if (expected.broadcast_id != dut.broadcast_id) {
-		LOG_WRN("Expected broadcast_id: 0x%06X, received: 0x%06X", expected.broadcast_id,
+		LOG_WRN("\tExpected broadcast_id: 0x%06X, received: 0x%06X", expected.broadcast_id,
 			dut.broadcast_id);
+		verdict = false;
+	} else {
+		LOG_INF("\tBroadcast_id: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	if (expected.phy != dut.phy) {
-		LOG_WRN("Expected phy: %d, received: %d", expected.phy, dut.phy);
+		LOG_WRN("\tExpected phy: %d, received: %d", expected.phy, dut.phy);
+		verdict = false;
+	} else {
+		LOG_INF("\tPhy: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	if (expected.encryption != dut.encryption) {
-		LOG_WRN("Expected encryption: %d, received: %d", expected.encryption,
+		LOG_WRN("\tExpected encryption: %d, received: %d", expected.encryption,
 			dut.encryption);
+		verdict = false;
+	} else {
+		LOG_INF("\tEncryption: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	if (expected.num_subgroups != dut.num_subgroups) {
-		LOG_WRN("Expected num_subgroups: %d, received: %d", expected.num_subgroups,
+		LOG_WRN("\tExpected num_subgroups: %d, received: %d", expected.num_subgroups,
 			dut.num_subgroups);
+		verdict = false;
+	} else {
+		LOG_INF("\tNum_subgroups: " COLOR_GREEN "Success" COLOR_RESET);
 	}
 
 	for (size_t i = 0U; i < dut.num_subgroups; i++) {
 		if (expected.subgroups[i].sampling_rate_hz != dut.subgroups[i].sampling_rate_hz) {
-			LOG_WRN("Expected sampling rate: %u Hz, received: %u Hz",
+			LOG_WRN("\tExpected sampling rate: %u Hz, received: %u Hz",
 				expected.subgroups[i].sampling_rate_hz,
 				dut.subgroups[i].sampling_rate_hz);
+			verdict = false;
+		} else {
+			LOG_INF("\tSampling rate: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].frame_duration_us != dut.subgroups[i].frame_duration_us) {
-			LOG_WRN("Expected frame duration: %u us, received: %u us",
+			LOG_WRN("\tExpected frame duration: %u us, received: %u us",
 				expected.subgroups[i].frame_duration_us,
 				dut.subgroups[i].frame_duration_us);
+			verdict = false;
+		} else {
+			LOG_INF("\tFrame duration: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].octets_per_frame != dut.subgroups[i].octets_per_frame) {
-			LOG_WRN("Expected octets per frame: %u, received: %u",
+			LOG_WRN("\tExpected octets per frame: %u, received: %u",
 				expected.subgroups[i].octets_per_frame,
 				dut.subgroups[i].octets_per_frame);
+			verdict = false;
+		} else {
+			LOG_INF("\tOctets per frame: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (strcmp(expected.subgroups[i].language, dut.subgroups[i].language) != 0) {
-			LOG_WRN("Expected language: %s, received: %s",
+			LOG_WRN("\tExpected language: %s, received: %s",
 				expected.subgroups[i].language, dut.subgroups[i].language);
+			verdict = false;
+		} else {
+			LOG_INF("\tLanguage: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].immediate_rend_flag !=
 		    dut.subgroups[i].immediate_rend_flag) {
-			LOG_WRN("Expected immediate_rend_flag: %d, received: %d",
+			LOG_WRN("\tExpected immediate_rend_flag: %d, received: %d",
 				expected.subgroups[i].immediate_rend_flag,
 				dut.subgroups[i].immediate_rend_flag);
+			verdict = false;
+		} else {
+			LOG_INF("\tImmediate_rend_flag: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].context != dut.subgroups[i].context) {
-			LOG_WRN("Expected context: 0x%04X, received: 0x%04X",
+			LOG_WRN("\tExpected context: 0x%04X, received: 0x%04X",
 				expected.subgroups[i].context, dut.subgroups[i].context);
+			verdict = false;
+		} else {
+			LOG_INF("\tContext: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].immediate_rend_flag !=
 		    dut.subgroups[i].immediate_rend_flag) {
-			LOG_WRN("Expected immediate_rend_flag: %d, received: %d",
+			LOG_WRN("\tExpected immediate_rend_flag: %d, received: %d",
 				expected.subgroups[i].immediate_rend_flag,
 				dut.subgroups[i].immediate_rend_flag);
+			verdict = false;
+		} else {
+			LOG_INF("\tImmediate_rend_flag: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (strcmp(expected.subgroups[i].program_info, dut.subgroups[i].program_info) !=
 		    0) {
-			LOG_WRN("Expected program info: %s, received: %s",
+			LOG_WRN("\tExpected program info: %s, received: %s",
 				expected.subgroups[i].program_info, dut.subgroups[i].program_info);
+			verdict = false;
+		} else {
+			LOG_INF("\tProgram info: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		if (expected.subgroups[i].num_bis != dut.subgroups[i].num_bis) {
-			LOG_WRN("Expected num_bis: %d, received: %d", expected.subgroups[i].num_bis,
-				dut.subgroups[i].num_bis);
+			LOG_WRN("\tExpected num_bis: %d, received: %d",
+				expected.subgroups[i].num_bis, dut.subgroups[i].num_bis);
+			verdict = false;
+		} else {
+			LOG_INF("\tNum_bis: " COLOR_GREEN "Success" COLOR_RESET);
 		}
 
 		for (size_t j = 0U; j < dut.subgroups[i].num_bis; j++) {
 			if (expected.subgroups[i].locations[j] != dut.subgroups[i].locations[j]) {
-				LOG_WRN("Expected location: %d, received: %d",
+				LOG_WRN("\tExpected location: %d, received: %d",
 					expected.subgroups[i].locations[j],
 					dut.subgroups[i].locations[j]);
+				verdict = false;
+			} else {
+				LOG_INF("\tLocation: " COLOR_GREEN "Success" COLOR_RESET);
 			}
 		}
 	}
+	LOG_INF("Verdict: %s",
+		verdict ? COLOR_GREEN "SUCCESS" COLOR_RESET : COLOR_RED "FAIL" COLOR_RESET);
 }
 
 int main(void)
@@ -853,7 +907,7 @@ int main(void)
 		}
 
 		LOG_INF("Waiting for Broadcaster");
-		err = k_sem_take(&sem_broadcaster_found, SEM_TIMEOUT);
+		err = k_sem_take(&sem_broadcaster_found, K_FOREVER);
 		if (err != 0) {
 			LOG_INF("sem_broadcaster_found timed out, resetting");
 			continue;
@@ -912,6 +966,8 @@ int main(void)
 			continue;
 		}
 
+		values_compare();
+
 		LOG_INF("Waiting for BIS sync request");
 		err = k_sem_take(&sem_bis_sync_requested, SEM_TIMEOUT);
 		if (err != 0) {
@@ -947,8 +1003,6 @@ int main(void)
 			continue;
 		}
 
-		values_compare();
-
 		LOG_INF("Waiting for PA disconnected");
 		k_sem_take(&sem_pa_sync_lost, K_FOREVER);
 
@@ -966,17 +1020,19 @@ int main(void)
 static int cmd_big_input(const struct shell *shell, size_t argc, char **argv)
 {
 	if (argc < 9) {
-		shell_error(shell, "<adv_name (string)> <broadcast_name (string)> "
-				   "<broadcast_id (6 "
-				   "octets)> <phy (1, 2, or 4 (coded))> <pd_us (uint32_t)> "
-				   "<encryption (0/1)> <broadcast_code (16 chars)> "
-				   "<num_subgroups "
-				   "(uint8_t)>");
+		shell_error(shell,
+			    "<adv_name (string)> <broadcast_name (string)> <broadcast_id (6 "
+			    "octets)> <phy (1, 2, or 4 (coded))> <pd_us (uint32_t)> <encryption "
+			    "(0/1)> <broadcast_code (16 chars)> <num_subgroups (uint8_t)> "
+			    "<std_quality (0/1)> <high_quality (0/1)>");
 		return -EINVAL;
 	}
 
 	memset(expected.adv_name, '\0', sizeof(expected.adv_name));
 	memcpy(expected.adv_name, argv[1], strlen(argv[1]));
+
+	memset(broadcast_name_target, '\0', sizeof(broadcast_name_target));
+	memcpy(broadcast_name_target, argv[2], strlen(argv[2]));
 
 	memset(expected.broadcast_name, '\0', sizeof(expected.broadcast_name));
 	memcpy(expected.broadcast_name, argv[2], strlen(argv[2]));
@@ -988,6 +1044,10 @@ static int cmd_big_input(const struct shell *shell, size_t argc, char **argv)
 
 	memset(expected.broadcast_code, '\0', sizeof(expected.broadcast_code));
 	memcpy(expected.broadcast_code, argv[7], strlen(argv[7]));
+
+	expected.num_subgroups = strtol(argv[8], NULL, 10);
+	expected.std_quality = strtol(argv[9], NULL, 10);
+	expected.high_quality = strtol(argv[10], NULL, 10);
 
 	return 0;
 }
@@ -1049,7 +1109,7 @@ static int cmd_bis_location_input(const struct shell *shell, size_t argc, char *
 		return -EINVAL;
 	}
 
-	expected.subgroups[subgroup_index].locations[bis_index] = strtol(argv[3], NULL, 10);
+	expected.subgroups[subgroup_index].locations[bis_index] = strtol(argv[3], NULL, 16);
 
 	return 0;
 }
@@ -1070,18 +1130,42 @@ static int cmd_run(const struct shell *shell, size_t argc, char **argv)
 	err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
 	if (err != 0 && err != -EALREADY) {
 		LOG_INF("Unable to start scan for broadcast sources: %d", err);
-		return 0;
 	}
+
+	return 0;
 }
 
-SHELL_STATIC_SUBCMD_SET_CREATE(expected_cmd,
-			       SHELL_COND_CMD(CONFIG_SHELL, big_input, NULL, "Expected BIG values",
-					      cmd_big_input),
-			       SHELL_COND_CMD(CONFIG_SHELL, subgroup_input, NULL,
-					      "Expected subgroup values", cmd_sub_input),
-			       SHELL_COND_CMD(CONFIG_SHELL, bis_location_input, NULL,
-					      "Expected BIS location", cmd_bis_location_input),
-			       SHELL_COND_CMD(CONFIG_SHELL, run_test, NULL, "Run test", cmd_run),
-			       SHELL_SUBCMD_SET_END);
+static int cmd_test_uc0(const struct shell *shell, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	char *uc0_argv[11] = {"big_input", "Lecture hall", "Lecture", "0x123456", "2", "40000",
+			      "0",	   "blank",	   "1",	      "1",	  "0"};
+
+	cmd_big_input(shell, ARRAY_SIZE(uc0_argv), uc0_argv);
+
+	char *uc1_argv[10] = {"sub_input", "0", "24000", "10000",	    "60",
+			      "eng",	   "1", "64",	 "Mathematics 101", "1"};
+	cmd_sub_input(shell, ARRAY_SIZE(uc1_argv), uc1_argv);
+
+	char *bis_argv[4] = {"bis_location_input", "0", "0", "0x00"};
+
+	cmd_bis_location_input(shell, ARRAY_SIZE(bis_argv), bis_argv);
+
+	cmd_run(shell, 0, NULL);
+
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(
+	expected_cmd,
+	SHELL_COND_CMD(CONFIG_SHELL, big_input, NULL, "Expected BIG values", cmd_big_input),
+	SHELL_COND_CMD(CONFIG_SHELL, sub_input, NULL, "Expected subgroup values", cmd_sub_input),
+	SHELL_COND_CMD(CONFIG_SHELL, bis_location_input, NULL, "Expected BIS location",
+		       cmd_bis_location_input),
+	SHELL_COND_CMD(CONFIG_SHELL, run_test, NULL, "Run test", cmd_run),
+	SHELL_COND_CMD(CONFIG_SHELL, test_uc0, NULL, "Test use case 0", cmd_test_uc0),
+	SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(bct_test, &expected_cmd, "BCT tester", NULL);

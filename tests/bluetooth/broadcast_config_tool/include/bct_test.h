@@ -32,6 +32,8 @@ struct bct_test_values_big {
 	bool encryption;		       /* Done */
 	uint8_t broadcast_code[BT_AUDIO_BROADCAST_CODE_SIZE + 1];
 	uint8_t num_subgroups; /* Done */
+	bool high_quality;
+	bool std_quality;
 	struct bct_test_values_subgroup *subgroups;
 };
 
