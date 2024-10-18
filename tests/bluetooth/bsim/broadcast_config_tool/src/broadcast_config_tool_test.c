@@ -16,14 +16,12 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/audio/pbp.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/boards/native/nrf_bsim/common/bstests.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, CONFIG_MAIN_LOG_LEVEL);
 
 #include "bct_test.h"
-
-BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
-	     "Either SCAN_SELF or SCAN_OFFLOAD must be enabled");
 
 #define SEM_TIMEOUT		    K_SECONDS(60)
 #define BROADCAST_ASSISTANT_TIMEOUT K_SECONDS(120) /* 2 minutes */
@@ -33,12 +31,6 @@ BUILD_ASSERT(IS_ENABLED(CONFIG_SCAN_SELF) || IS_ENABLED(CONFIG_SCAN_OFFLOAD),
 #define COLOR_GREEN "\x1B[0;32m"
 #define COLOR_RED   "\x1B[0;31m"
 #define COLOR_RESET "\x1b[0m"
-
-#if defined(CONFIG_SCAN_SELF)
-#define ADV_TIMEOUT K_SECONDS(CONFIG_SCAN_DELAY)
-#else /* !CONFIG_SCAN_SELF */
-#define ADV_TIMEOUT K_FOREVER
-#endif /* CONFIG_SCAN_SELF */
 
 #define INVALID_BROADCAST_ID		  (BT_AUDIO_BROADCAST_ID_MAX + 1)
 #define PA_SYNC_INTERVAL_TO_TIMEOUT_RATIO 20 /* Set the timeout relative to interval */
@@ -77,6 +69,8 @@ static volatile bool big_synced;
 static volatile bool base_received;
 static struct bt_conn *broadcast_assistant_conn;
 static volatile uint8_t stream_count;
+
+extern enum bst_result_t bst_result;
 
 static struct bct_test_values_subgroup
 	subgroups_expected[CONFIG_BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT];
@@ -878,8 +872,14 @@ static void values_compare(void)
 			}
 		}
 	}
-	LOG_INF("Verdict: %s",
-		verdict ? COLOR_GREEN "SUCCESS" COLOR_RESET : COLOR_RED "FAIL" COLOR_RESET);
+
+	if (verdict == true) {
+		bst_result = Passed;
+		LOG_WRN("Verdict: " COLOR_GREEN "SUCCESS" COLOR_RESET);
+	} else {
+		bst_result = Failed;
+		LOG_WRN("Verdict: " COLOR_RED "FAIL" COLOR_RESET);
+	}
 }
 
 int main(void)
@@ -1015,6 +1015,21 @@ int main(void)
 	}
 
 	return 0;
+}
+
+static const struct bst_test_instance test_sample[] = {
+	{
+		.test_id = "broadcast_config_tool",
+		.test_descr = "Test based on the broadcast config tool."
+			      "It expects to be connected to a compatible broadcast config "
+			      "tool sample, and checks is the BASE matches what is expected",
+	},
+	BSTEST_END_MARKER};
+
+struct bst_test_list *test_broadcast_config_tool_test_install(struct bst_test_list *tests)
+{
+	tests = bst_add_tests(tests, test_sample);
+	return tests;
 }
 
 static int cmd_big_input(const struct shell *shell, size_t argc, char **argv)

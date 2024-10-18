@@ -3,22 +3,6 @@
 
 mainmenu "Bluetooth: Broadcast Audio Sink"
 
-config SCAN_SELF
-	bool "Whether to scan for Broadcast Sources without Broadcast Assistant"
-	default y
-	help
-	  If set to true, the sample will start scanning for Broadcast Sources
-	  without waiting for a Broadcast Assistant to connect.
-
-config SCAN_DELAY
-	int "Delay before starting scan (in seconds)"
-	range 0 255
-	default 10
-	depends on SCAN_SELF
-	help
-	  Time to advertise connectable for a Broadcast Assistant to connect
-	  before starting scanning for Broadcast Sources.
-
 config TARGET_BROADCAST_NAME
 	string "Target Broadcast Device Name"
 	default "Testing"
