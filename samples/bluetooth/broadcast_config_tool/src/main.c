@@ -19,9 +19,9 @@
 #include "zbus_common.h"
 #include "macros_common.h"
 #include "bt_mgmt.h"
-#include "sd_card.h"
+// #include "sd_card.h"
 #include "lc3_streamer.h"
-#include "led.h"
+// #include "led.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, CONFIG_MAIN_LOG_LEVEL);
@@ -583,11 +583,11 @@ int main(void)
 		return ret;
 	}
 
-	ret = led_init();
-	ERR_CHK_MSG(ret, "Failed to initialize LED module");
+	// ret = led_init();
+	// ERR_CHK_MSG(ret, "Failed to initialize LED module");
 
-	ret = led_on(LED_APP_RGB, LED_COLOR_GREEN);
-	ERR_CHK(ret);
+	// ret = led_on(LED_APP_RGB, LED_COLOR_GREEN);
+	// ERR_CHK(ret);
 
 	ret = bt_mgmt_init();
 	ERR_CHK(ret);
@@ -998,7 +998,7 @@ static int cmd_start(const struct shell *shell, size_t argc, char **argv)
 		}
 	}
 
-	led_blink(LED_APP_RGB, LED_COLOR_GREEN);
+	// led_blink(LED_APP_RGB, LED_COLOR_GREEN);
 
 	return 0;
 }
@@ -1078,7 +1078,7 @@ static int cmd_stop(const struct shell *shell, size_t argc, char **argv)
 		}
 	}
 
-	led_on(LED_APP_RGB, LED_COLOR_GREEN);
+	// led_on(LED_APP_RGB, LED_COLOR_GREEN);
 
 	return 0;
 }
@@ -1574,27 +1574,27 @@ static int cmd_program_info(const struct shell *shell, size_t argc, char **argv)
 #define FILE_LIST_BUF_SIZE 1024
 static int cmd_file_list(const struct shell *shell, size_t argc, char **argv)
 {
-	int ret;
-	char buf[FILE_LIST_BUF_SIZE];
-	size_t buf_size = FILE_LIST_BUF_SIZE;
-	char *dir_path = NULL;
+	// int ret;
+	// char buf[FILE_LIST_BUF_SIZE];
+	// size_t buf_size = FILE_LIST_BUF_SIZE;
+	// char *dir_path = NULL;
 
-	if (argc > 2) {
-		shell_error(shell, "Usage: bct file list [dir path]");
-		return -EINVAL;
-	}
+	// if (argc > 2) {
+	// 	shell_error(shell, "Usage: bct file list [dir path]");
+	// 	return -EINVAL;
+	// }
 
-	if (argc == 2) {
-		dir_path = argv[1];
-	}
+	// if (argc == 2) {
+	// 	dir_path = argv[1];
+	// }
 
-	ret = sd_card_list_files(dir_path, buf, &buf_size);
-	if (ret) {
-		shell_error(shell, "List files err: %d", ret);
-		return ret;
-	}
+	// ret = sd_card_list_files(dir_path, buf, &buf_size);
+	// if (ret) {
+	// 	shell_error(shell, "List files err: %d", ret);
+	// 	return ret;
+	// }
 
-	shell_print(shell, "%s", buf);
+	// shell_print(shell, "%s", buf);
 
 	return 0;
 }

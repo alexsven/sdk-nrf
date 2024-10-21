@@ -16,7 +16,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/audio/pbp.h>
 #include <zephyr/shell/shell.h>
-#include <zephyr/boards/native/nrf_bsim/common/bstests.h>
+#include <bstests.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, CONFIG_MAIN_LOG_LEVEL);

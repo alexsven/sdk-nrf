@@ -12,7 +12,7 @@ set -ue
 
 source ${ZEPHYR_BASE}/tests/bsim/compile.source
 
-#app=${ZEPHYR_NRF_MODULE_DIR}/samples/bluetooth/broadcast_config_tool sysbuild=1 compile
-app=${ZEPHYR_NRF_MODULE_DIR}/tests/bluetooth/bsim/broadcast_config_tool sysbuild=1 compile
+app=${ZEPHYR_NRF_MODULE_DIR}/samples/bluetooth/broadcast_config_tool sysbuild=1 compile
+#app=${ZEPHYR_NRF_MODULE_DIR}/tests/bluetooth/bsim/broadcast_config_tool sysbuild=1 compile
 
 wait_for_background_jobs
