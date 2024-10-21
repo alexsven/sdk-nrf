@@ -11,10 +11,10 @@ EXECUTE_TIMEOUT=200
 
 cd ${BSIM_OUT_PATH}/bin
 
-Execute ./bs_${ZEPHYR_NRF_MODULE_DIR}/samples_bluetooth_broadcast_config_tool_prj_conf \
+Execute ./bs_nrf5340bsim_nrf5340_cpuapp____nrf_samples_bluetooth_broadcast_config_tool_prj_conf_overlay-nrf5340_bsim_conf \
   -v=${verbosity_level} -s=${simulation_id} -d=0 -RealEncryption=1
 
-Execute ./bs_${ZEPHYR_NRF_MODULE_DIR}/tests_bluetooth_bsim_broadcast_config_tool_prj_conf \
+Execute ./bs_nrf5340bsim_nrf5340_cpuapp____nrf_tests_bluetooth_bsim_broadcast_config_tool_prj_conf \
   -v=${verbosity_level} -s=${simulation_id} -d=1 -RealEncryption=1 \
   -testid=broadcast_config_tool
 
