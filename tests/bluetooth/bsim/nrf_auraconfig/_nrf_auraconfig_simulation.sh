@@ -59,6 +59,6 @@ Execute ./bs_nrf5340bsim_nrf5340_cpuapp____nrf_tests_bluetooth_bsim_nrf_auraconf
 Execute ./bs_nrf5340bsim_nrf5340_cpuapp____nrf_tests_bluetooth_bsim_nrf_auraconfig_tester_prj_conf \
   -v=${VERBOSITY} -s=${SIM_ID} -d=1 -RealEncryption=1 -cpu0_testid=nac_test -argstest ${nac_test_args[@]}
 
-Execute ./bs_2G4_phy_v1 -v=${VERBOSITY} -s=${SIM_ID} -D=2 -sim_length=2e6
+Execute ./bs_2G4_phy_v1 -v=${VERBOSITY} -s=${SIM_ID} -D=2 -sim_length=5e6
 
 wait_for_background_jobs # Wait for all programs in background and return != 0 if any fails
