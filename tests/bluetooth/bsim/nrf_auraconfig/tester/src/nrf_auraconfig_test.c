@@ -107,6 +107,11 @@ static void stream_disconnected_cb(struct bt_bap_stream *stream, uint8_t reason)
 
 	LOG_INF("Stream disconnected with reason 0x%02X", reason);
 
+	if (reason == BT_HCI_ERR_TERM_DUE_TO_MIC_FAIL) {
+		LOG_WRN("MIC failure detected, broadcast code is likely wrong");
+		bst_result = Failed;
+	}
+
 	err = k_sem_take(&sem_stream_connected, K_NO_WAIT);
 	if (err != 0) {
 		LOG_DBG("Failed to take sem_stream_connected: %d", err);
