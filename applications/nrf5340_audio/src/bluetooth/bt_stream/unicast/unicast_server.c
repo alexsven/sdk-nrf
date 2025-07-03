@@ -132,6 +132,7 @@ static struct bt_audio_codec_cap lc3_codec_source = BT_AUDIO_CODEC_CAP_LC3(
 static enum bt_audio_dir caps_dirs[] = {
 #if defined(CONFIG_BT_AUDIO_RX)
 	BT_AUDIO_DIR_SINK,
+	BT_AUDIO_DIR_SINK,
 #endif /* CONFIG_BT_AUDIO_RX */
 #if defined(CONFIG_BT_AUDIO_TX)
 	BT_AUDIO_DIR_SOURCE,
@@ -147,6 +148,7 @@ static const struct bt_bap_qos_cfg_pref qos_pref = BT_BAP_QOS_CFG_PREF(
 static struct bt_pacs_cap caps[] = {
 #if (CONFIG_BT_AUDIO_RX)
 				{
+					 .codec_cap = &lc3_codec_sink,
 					 .codec_cap = &lc3_codec_sink,
 				},
 #endif
@@ -457,7 +459,7 @@ static struct bt_bap_stream_ops stream_ops = {
 
 int le_audio_concurrent_sync_num_get(void)
 {
-	return 1; /* Only one stream supported at the moment */
+	return 2; /* Only one stream supported at the moment */
 }
 
 int unicast_server_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint32_t *bitrate,
@@ -712,6 +714,9 @@ int unicast_server_enable(le_audio_receive_cb recv_cb, enum bt_audio_location lo
 			csip_param.rank = CSIP_HL_RANK;
 		} else if (location == BT_AUDIO_LOCATION_FRONT_RIGHT) {
 			csip_param.rank = CSIP_HR_RANK;
+		} else if (location ==
+			   (BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT)) {
+			csip_param.rank = CSIP_HL_RANK;
 		} else {
 			LOG_ERR("Channel not supported");
 			return -ECANCELED;

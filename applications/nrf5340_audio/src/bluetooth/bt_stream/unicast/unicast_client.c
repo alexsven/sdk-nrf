@@ -45,8 +45,8 @@ struct le_audio_unicast_server {
 	bool waiting_for_sink_disc;
 	struct bt_audio_codec_cap sink_codec_cap[CONFIG_CODEC_CAP_COUNT_MAX];
 	uint8_t num_sink_eps;
-	struct bt_bap_ep *sink_ep;
-	struct bt_cap_stream cap_sink_stream;
+	struct bt_bap_ep *sink_ep[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
+	struct bt_cap_stream cap_sink_stream[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
 	/* Source variables */
 	bool waiting_for_source_disc;
 	struct bt_audio_codec_cap source_codec_cap[CONFIG_CODEC_CAP_COUNT_MAX];
@@ -142,7 +142,7 @@ static void cap_start_worker(struct k_work *work)
 	struct le_audio_unicast_server *unicast_server =
 		&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3];
 
-	if (unicast_server->sink_ep == NULL && unicast_server->source_ep == NULL) {
+	if (unicast_server->sink_ep[0] == NULL && unicast_server->source_ep == NULL) {
 		LOG_ERR("No sink or source endpoint found for device");
 		return;
 	}
@@ -153,40 +153,54 @@ static void cap_start_worker(struct k_work *work)
 			pair_params[ARRAY_SIZE(unicast_servers[cig_index][0])];
 		/* 2 streams (one sink and one source stream) for each unicast_server */
 		struct bt_bap_unicast_group_stream_param
-			group_stream_params[(ARRAY_SIZE(unicast_servers[cig_index][0]) * 2)];
+			group_stream_params[(ARRAY_SIZE(unicast_servers[cig_index][0]) *
+					     (CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT +
+					      CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT))];
 		struct bt_bap_unicast_group_param group_param;
 
-		for (int i = 0; i < ARRAY_SIZE(group_stream_params); i++) {
+		uint8_t ep_iterator = 0;
+		for (int j = 0; j < ARRAY_SIZE(group_stream_params); j++) {
 			/* Every other stream should be sink or source */
-			if ((i % 2) == 0) {
-				group_stream_params[i].qos = &lc3_preset_sink.qos;
-				group_stream_params[i].stream =
+			if (j == 0 || j == 2 || j == 3 || j == 5) {
+				group_stream_params[j].qos = &lc3_preset_sink.qos;
+				group_stream_params[j].stream =
 					&unicast_servers[cig_index][0][device_iterator]
-						 .cap_sink_stream.bap_stream;
-			} else {
-				group_stream_params[i].qos = &lc3_preset_source.qos;
-				group_stream_params[i].stream =
+						 .cap_sink_stream[ep_iterator++]
+						 .bap_stream;
+			} else if (j == 1 || j == 4) {
+				group_stream_params[j].qos = &lc3_preset_source.qos;
+				group_stream_params[j].stream =
 					&unicast_servers[cig_index][0][device_iterator]
 						 .cap_source_stream.bap_stream;
+			}
+
+			if (j == 2 || j == 5) {
+				ep_iterator = 0;
 				device_iterator++;
 			}
 		}
 
 		for (int i = 0; i < ARRAY_SIZE(pair_params); i++) {
-			if (unicast_server->sink_ep) {
+			if (unicast_server->sink_ep[ep_iterator]) {
 				pair_params[i].tx_param = &group_stream_params[stream_iterator];
 			} else {
 				pair_params[i].tx_param = NULL;
 			}
 			stream_iterator++;
 
-			if (unicast_server->source_ep) {
+			if (unicast_server->source_ep && ep_iterator == 0) {
 				pair_params[i].rx_param = &group_stream_params[stream_iterator];
 			} else {
 				pair_params[i].rx_param = NULL;
 			}
 
 			stream_iterator++;
+			if (stream_iterator == ((CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT +
+						 CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT) -
+						1)) {
+				ep_iterator = 0;
+			}
+			ep_iterator++;
 		}
 
 		group_param.params = pair_params;
@@ -220,13 +234,33 @@ static void cap_start_worker(struct k_work *work)
 	param.stream_params = cap_stream_params;
 	param.count = 0;
 	param.type = BT_CAP_SET_TYPE_AD_HOC;
+	uint32_t left = 1;
+	uint32_t right = 2;
+	static struct bt_bap_lc3_preset lc3_preset_sink_left;
+	memcpy(&lc3_preset_sink_left, &lc3_preset_sink, sizeof(lc3_preset_sink));
+	ret = bt_audio_codec_cfg_set_val(&lc3_preset_sink_left.codec_cfg,
+					 BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&left,
+					 sizeof(unicast_server->location));
+	static struct bt_bap_lc3_preset lc3_preset_sink_right;
+	memcpy(&lc3_preset_sink_right, &lc3_preset_sink, sizeof(lc3_preset_sink));
+	ret = bt_audio_codec_cfg_set_val(&lc3_preset_sink_right.codec_cfg,
+					 BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&right,
+					 sizeof(unicast_server->location));
 
-	if (unicast_server->sink_ep) {
-		cap_stream_params[param.count].member.member = unicast_server->device_conn;
-		cap_stream_params[param.count].stream = &unicast_server->cap_sink_stream;
-		cap_stream_params[param.count].ep = unicast_server->sink_ep;
-		cap_stream_params[param.count].codec_cfg = &lc3_preset_sink.codec_cfg;
-		param.count++;
+	if (unicast_server->num_sink_eps) {
+		for (int i = 0; i < unicast_server->num_sink_eps; i++) {
+			cap_stream_params[param.count].member.member = unicast_server->device_conn;
+			cap_stream_params[param.count].stream = &unicast_server->cap_sink_stream[i];
+			cap_stream_params[param.count].ep = unicast_server->sink_ep[i];
+			if (i == 0) {
+				cap_stream_params[param.count].codec_cfg =
+					&lc3_preset_sink_left.codec_cfg;
+			} else if (i == 1) {
+				cap_stream_params[param.count].codec_cfg =
+					&lc3_preset_sink_right.codec_cfg;
+			}
+			param.count++;
+		}
 	}
 
 	if (unicast_server->source_ep) {
@@ -264,10 +298,10 @@ static int device_pres_delay_find(struct stream_index idx, uint32_t *pres_dly_us
 	struct le_audio_unicast_server *unicast_server =
 		&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3];
 
-	uint32_t pd_min = unicast_server->sink_ep->qos_pref.pd_min;
-	uint32_t pd_max = unicast_server->sink_ep->qos_pref.pd_max;
-	uint32_t pref_pd_min = unicast_server->sink_ep->qos_pref.pref_pd_min;
-	uint32_t pref_pd_max = unicast_server->sink_ep->qos_pref.pref_pd_max;
+	uint32_t pd_min = unicast_server->sink_ep[0]->qos_pref.pd_min;
+	uint32_t pd_max = unicast_server->sink_ep[0]->qos_pref.pd_max;
+	uint32_t pref_pd_min = unicast_server->sink_ep[0]->qos_pref.pref_pd_min;
+	uint32_t pref_pd_max = unicast_server->sink_ep[0]->qos_pref.pref_pd_max;
 
 	LOG_DBG("Index: %d, Pref min: %d, pref max: %d, pres_min: %d, pres_max: %d", idx.lvl3,
 		pref_pd_min, pref_pd_max, pd_min, pd_max);
@@ -275,30 +309,37 @@ static int device_pres_delay_find(struct stream_index idx, uint32_t *pres_dly_us
 	*pres_dly_us = 0;
 
 	for (int i = 0; i < ARRAY_SIZE(unicast_servers[idx.lvl1][idx.lvl2]); i++) {
-		if (le_audio_ep_qos_configured(unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep)) {
+		if (le_audio_ep_qos_configured(unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep[0])) {
 			LOG_DBG("i: %d, Pref min: %d, pref max: %d, pres_min: %d, pres_max: %d", i,
 				unicast_servers[idx.lvl1][idx.lvl2][i]
-					.sink_ep->qos_pref.pref_pd_min,
+					.sink_ep[0]
+					->qos_pref.pref_pd_min,
 				unicast_servers[idx.lvl1][idx.lvl2][i]
-					.sink_ep->qos_pref.pref_pd_max,
-				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep->qos_pref.pd_min,
-				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep->qos_pref.pd_max);
+					.sink_ep[0]
+					->qos_pref.pref_pd_max,
+				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep[0]->qos_pref.pd_min,
+				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep[0]->qos_pref.pd_max);
 
 			pd_min = MAX(
 				pd_min,
-				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep->qos_pref.pd_min);
+				unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep[0]->qos_pref.pd_min);
 			pref_pd_min = MAX(pref_pd_min, unicast_servers[idx.lvl1][idx.lvl2][i]
-							       .sink_ep->qos_pref.pref_pd_min);
+							       .sink_ep[0]
+							       ->qos_pref.pref_pd_min);
 
-			if (unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep->qos_pref.pd_max) {
+			if (unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep[0]->qos_pref.pd_max) {
 				pd_max = MIN(pd_max, unicast_servers[idx.lvl1][idx.lvl2][i]
-							     .sink_ep->qos_pref.pd_max);
+							     .sink_ep[0]
+							     ->qos_pref.pd_max);
 			}
 
-			if (unicast_servers[idx.lvl1][idx.lvl2][i].sink_ep->qos_pref.pref_pd_max) {
+			if (unicast_servers[idx.lvl1][idx.lvl2][i]
+				    .sink_ep[0]
+				    ->qos_pref.pref_pd_max) {
 				pref_pd_max =
 					MIN(pref_pd_max, unicast_servers[idx.lvl1][idx.lvl2][i]
-								 .sink_ep->qos_pref.pref_pd_max);
+								 .sink_ep[0]
+								 ->qos_pref.pref_pd_max);
 			}
 		}
 	}
@@ -665,16 +706,19 @@ static bool source_parse_cb(struct bt_data *data, void *user_data)
  * @param[in]	dir		Direction of the capabilities to check.
  * @param[in]	index		Device index.
  *
- * @return	True if valid codec capability found, false otherwise.
+ * @retval	0		No valid codec capabilities found.
+ * @retval	Other	Bitfield of valid codec capabilities.
  */
-static bool valid_codec_cap_check(struct bt_audio_codec_cap cap_array[], uint8_t num_caps,
-				  enum bt_audio_dir dir, uint8_t index)
+static uint32_t valid_codec_cap_check(struct bt_audio_codec_cap cap_array[], uint8_t num_caps,
+				      enum bt_audio_dir dir, uint8_t index)
 {
-	bool valid_result = false;
+	uint32_t valid_result = 0;
 
 	/* Only the sampling frequency is checked */
 	if (dir == BT_AUDIO_DIR_SINK) {
 		LOG_INF("Discovered %d sink endpoint(s) for device %d", num_caps, index);
+		bool valid_sink = false;
+
 		for (int i = 0; i < num_caps; i++) {
 			if (IS_ENABLED(CONFIG_BT_AUDIO_EP_PRINT)) {
 				LOG_INF("");
@@ -685,10 +729,18 @@ static bool valid_codec_cap_check(struct bt_audio_codec_cap cap_array[], uint8_t
 			}
 
 			(void)bt_audio_data_parse(cap_array[i].data, cap_array[i].data_len,
-						  sink_parse_cb, &valid_result);
+						  sink_parse_cb, &valid_sink);
+
+			if (valid_sink) {
+				LOG_WRN("Valid codec capabilities found for device %d, EP %d",
+					index, i);
+				valid_result |= 1 << i;
+			}
 		}
 	} else if (dir == BT_AUDIO_DIR_SOURCE) {
 		LOG_INF("Discovered %d source endpoint(s) for device %d", num_caps, index);
+		bool valid_source = false;
+
 		for (int i = 0; i < num_caps; i++) {
 			if (IS_ENABLED(CONFIG_BT_AUDIO_EP_PRINT)) {
 				LOG_INF("");
@@ -699,7 +751,13 @@ static bool valid_codec_cap_check(struct bt_audio_codec_cap cap_array[], uint8_t
 			}
 
 			(void)bt_audio_data_parse(cap_array[i].data, cap_array[i].data_len,
-						  source_parse_cb, &valid_result);
+						  source_parse_cb, &valid_source);
+
+			if (valid_source) {
+				LOG_DBG("Valid codec capabilities found for device %d, EP %d",
+					index, i);
+				valid_result |= 1 << i;
+			}
 		}
 	}
 
@@ -710,63 +768,72 @@ static int update_cap_sink_stream_qos(struct le_audio_unicast_server *unicast_se
 				      uint32_t pres_delay_us)
 {
 	int ret;
-
-	if (unicast_server->cap_sink_stream.bap_stream.ep == NULL) {
-		return -ESRCH;
-	}
-
-	if (unicast_server->cap_sink_stream.bap_stream.qos == NULL) {
-		LOG_WRN("No QoS found for %p", (void *)&unicast_server->cap_sink_stream.bap_stream);
-		return -ENXIO;
-	}
-
-	if (unicast_server->cap_sink_stream.bap_stream.qos->pd != pres_delay_us) {
-		struct bt_cap_unicast_audio_stop_param param;
-		struct bt_cap_stream *streams[2];
-
-		LOG_DBG("Current preset PD = %d us, target PD = %d us",
-			unicast_server->cap_sink_stream.bap_stream.qos->pd, pres_delay_us);
-
-		param.streams = streams;
-		param.count = 0;
-		param.type = BT_CAP_SET_TYPE_AD_HOC;
-		param.release = true;
-
-		if (playing_state &&
-		    le_audio_ep_state_check(unicast_server->cap_sink_stream.bap_stream.ep,
-					    BT_BAP_EP_STATE_STREAMING)) {
-			LOG_DBG("Update streaming %s unicast_server, connection %p, stream %p",
-				unicast_server->ch_name, (void *)&unicast_server->device_conn,
-				(void *)&unicast_server->cap_sink_stream.bap_stream);
-
-			unicast_server->qos_reconfigure = true;
-			unicast_server->reconfigure_pd = pres_delay_us;
-
-			streams[param.count] = &unicast_server->cap_sink_stream;
-			param.count++;
-		} else {
-			LOG_DBG("Reset %s unicast_server, connection %p, stream %p",
-				unicast_server->ch_name, (void *)&unicast_server->device_conn,
-				(void *)&unicast_server->cap_sink_stream.bap_stream);
-			unicast_server->cap_sink_stream.bap_stream.qos->pd = pres_delay_us;
+	for (int i = 0; i < ARRAY_SIZE(unicast_server->cap_sink_stream); i++) {
+		if (unicast_server->cap_sink_stream[i].bap_stream.ep == NULL) {
+			return -ESRCH;
 		}
 
-		if (playing_state &&
-		    le_audio_ep_state_check(unicast_server->cap_source_stream.bap_stream.ep,
-					    BT_BAP_EP_STATE_STREAMING)) {
-			unicast_server->qos_reconfigure = true;
-			unicast_server->reconfigure_pd = pres_delay_us;
-
-			streams[param.count] = &unicast_server->cap_source_stream;
-			param.count++;
+		if (unicast_server->cap_sink_stream[i].bap_stream.qos == NULL) {
+			LOG_WRN("No QoS found for %p",
+				(void *)&unicast_server->cap_sink_stream[i].bap_stream);
+			return -ENXIO;
 		}
 
-		if (param.count > 0) {
-			ret = bt_cap_initiator_unicast_audio_stop(&param);
-			if (ret) {
-				LOG_WRN("Failed to stop streams: %d, use default PD in preset",
-					ret);
-				return ret;
+		if (unicast_server->cap_sink_stream[i].bap_stream.qos->pd != pres_delay_us) {
+			struct bt_cap_unicast_audio_stop_param param;
+			struct bt_cap_stream *streams[2];
+
+			LOG_DBG("Current preset PD = %d us, target PD = %d us",
+				unicast_server->cap_sink_stream[i].bap_stream.qos->pd,
+				pres_delay_us);
+
+			param.streams = streams;
+			param.count = 0;
+			param.type = BT_CAP_SET_TYPE_AD_HOC;
+			param.release = true;
+
+			if (playing_state &&
+			    le_audio_ep_state_check(
+				    unicast_server->cap_sink_stream[i].bap_stream.ep,
+				    BT_BAP_EP_STATE_STREAMING)) {
+				LOG_DBG("Update streaming %s unicast_server, connection %p, stream "
+					"%p",
+					unicast_server->ch_name,
+					(void *)&unicast_server->device_conn,
+					(void *)&unicast_server->cap_sink_stream[i].bap_stream);
+
+				unicast_server->qos_reconfigure = true;
+				unicast_server->reconfigure_pd = pres_delay_us;
+
+				streams[param.count] = &unicast_server->cap_sink_stream[i];
+				param.count++;
+			} else {
+				LOG_DBG("Reset %s unicast_server, connection %p, stream %p",
+					unicast_server->ch_name,
+					(void *)&unicast_server->device_conn,
+					(void *)&unicast_server->cap_sink_stream[i].bap_stream);
+				unicast_server->cap_sink_stream[i].bap_stream.qos->pd =
+					pres_delay_us;
+			}
+
+			if (playing_state &&
+			    le_audio_ep_state_check(unicast_server->cap_source_stream.bap_stream.ep,
+						    BT_BAP_EP_STATE_STREAMING)) {
+				unicast_server->qos_reconfigure = true;
+				unicast_server->reconfigure_pd = pres_delay_us;
+
+				streams[param.count] = &unicast_server->cap_source_stream;
+				param.count++;
+			}
+
+			if (param.count > 0) {
+				ret = bt_cap_initiator_unicast_audio_stop(&param);
+				if (ret) {
+					LOG_WRN("Failed to stop streams: %d, use default PD in "
+						"preset",
+						ret);
+					return ret;
+				}
 			}
 		}
 	}
@@ -789,8 +856,13 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 	struct le_audio_unicast_server *unicast_server =
 		&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3];
 
-	if ((loc & BT_AUDIO_LOCATION_FRONT_LEFT) || (loc & BT_AUDIO_LOCATION_SIDE_LEFT) ||
-	    (loc == BT_AUDIO_LOCATION_MONO_AUDIO)) {
+	if (loc & BT_AUDIO_LOCATION_FRONT_LEFT && loc & BT_AUDIO_LOCATION_FRONT_RIGHT) {
+		LOG_WRN("Both front left and right channel locations are set, stereo device found");
+		unicast_server->location =
+			BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT;
+		unicast_server->ch_name = "STEREO";
+	} else if ((loc & BT_AUDIO_LOCATION_FRONT_LEFT) || (loc & BT_AUDIO_LOCATION_SIDE_LEFT) ||
+		   (loc == BT_AUDIO_LOCATION_MONO_AUDIO)) {
 		unicast_server->location = BT_AUDIO_LOCATION_FRONT_LEFT;
 		unicast_server->ch_name = "LEFT";
 
@@ -887,18 +959,12 @@ static void endpoint_cb(struct bt_conn *conn, enum bt_audio_dir dir, struct bt_b
 
 	if (dir == BT_AUDIO_DIR_SINK) {
 		if (ep != NULL) {
-			if (unicast_server->num_sink_eps > 0) {
-				LOG_WRN("More than one sink endpoint found, idx 0 is used "
-					"by default");
-				return;
-			}
-
-			unicast_server->sink_ep = ep;
+			unicast_server->sink_ep[unicast_server->num_sink_eps] = ep;
 			unicast_server->num_sink_eps++;
 			return;
 		}
 
-		if (unicast_server->sink_ep == NULL) {
+		if (unicast_server->sink_ep[0] == NULL) {
 			LOG_WRN("No sink endpoints found");
 		}
 
@@ -1037,7 +1103,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 			/* NOTE: The string below is used by the Nordic CI system */
 			LOG_WRN("No valid codec capability found for %s sink",
 				unicast_server->ch_name);
-			unicast_server->sink_ep = NULL;
+			unicast_server->sink_ep[0] = NULL;
 		}
 	} else if (dir == BT_AUDIO_DIR_SOURCE && !err) {
 		if (valid_codec_cap_check(unicast_server->source_codec_cap,
@@ -1138,9 +1204,11 @@ static void check_and_update_pd_in_group(struct stream_index idx, uint32_t new_p
 	LOG_DBG("Set %s, connection %p, stream %p",
 		unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3].ch_name,
 		(void *)&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3].device_conn,
-		(void *)&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3].cap_sink_stream.bap_stream);
+		(void *)&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3]
+			.cap_sink_stream[0]
+			.bap_stream);
 
-	unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3].cap_sink_stream.bap_stream.qos->pd =
+	unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3].cap_sink_stream[0].bap_stream.qos->pd =
 		new_pres_dly_us;
 }
 
@@ -1170,7 +1238,7 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	if (dir == BT_AUDIO_DIR_SINK) {
 		/* NOTE: The string below is used by the Nordic CI system */
 		LOG_INF("%s sink stream configured", unicast_server->ch_name);
-		le_audio_print_codec(unicast_server->cap_sink_stream.bap_stream.codec_cfg, dir);
+		le_audio_print_codec(unicast_server->cap_sink_stream[0].bap_stream.codec_cfg, dir);
 	} else if (dir == BT_AUDIO_DIR_SOURCE) {
 		LOG_INF("%s source stream configured", unicast_server->ch_name);
 		le_audio_print_codec(unicast_server->cap_source_stream.bap_stream.codec_cfg, dir);
@@ -1191,7 +1259,7 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 		return;
 	}
 
-	if (le_audio_ep_state_check(unicast_server->cap_sink_stream.bap_stream.ep,
+	if (le_audio_ep_state_check(unicast_server->cap_sink_stream[0].bap_stream.ep,
 				    BT_BAP_EP_STATE_CODEC_CONFIGURED)) {
 		check_and_update_pd_in_group(idx, new_pres_dly_us);
 	}
@@ -1201,8 +1269,8 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	/* Make sure both sink and source ep (if both are discovered) are configured before
 	 * QoS
 	 */
-	if ((unicast_server->sink_ep != NULL &&
-	     !le_audio_ep_state_check(unicast_server->cap_sink_stream.bap_stream.ep,
+	if ((unicast_server->sink_ep[0] != NULL &&
+	     !le_audio_ep_state_check(unicast_server->cap_sink_stream[0].bap_stream.ep,
 				      BT_BAP_EP_STATE_CODEC_CONFIGURED)) ||
 	    (unicast_server->source_ep != NULL &&
 	     !le_audio_ep_state_check(unicast_server->cap_source_stream.bap_stream.ep,
@@ -1232,7 +1300,10 @@ static void stream_qos_set_cb(struct bt_bap_stream *stream)
 			unicast_server->reconfigure_pd);
 
 		unicast_server->qos_reconfigure = false;
-		unicast_server->cap_sink_stream.bap_stream.qos->pd = unicast_server->reconfigure_pd;
+		for (int i = 0; i < unicast_server->num_sink_eps; i++) {
+			unicast_server->cap_sink_stream[i].bap_stream.qos->pd =
+				unicast_server->reconfigure_pd;
+		}
 	} else {
 		LOG_DBG("Set %s to PD: %d", unicast_server->ch_name, stream->qos->pd);
 	}
@@ -1289,13 +1360,17 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 	/* Check if the other streams are streaming, send event if not */
 	for (int i = 0; i < CONFIG_BT_ISO_MAX_CIG; i++) {
 		for (int j = 0; j < ARRAY_SIZE(unicast_servers[i][0]); j++) {
-			if (le_audio_ep_state_check(
-				    unicast_servers[i][0][j].cap_sink_stream.bap_stream.ep,
-				    BT_BAP_EP_STATE_STREAMING) ||
-			    le_audio_ep_state_check(
-				    unicast_servers[i][0][j].cap_source_stream.bap_stream.ep,
-				    BT_BAP_EP_STATE_STREAMING)) {
-				return;
+			for (int k = 0; k < unicast_servers[i][0][j].num_sink_eps; k++) {
+				if (le_audio_ep_state_check(unicast_servers[i][0][j]
+								    .cap_sink_stream[k]
+								    .bap_stream.ep,
+							    BT_BAP_EP_STATE_STREAMING) ||
+				    le_audio_ep_state_check(
+					    unicast_servers[i][0][j]
+						    .cap_source_stream.bap_stream.ep,
+					    BT_BAP_EP_STATE_STREAMING)) {
+					return;
+				}
 			}
 		}
 	}
@@ -1310,13 +1385,17 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 	/* Check if the other streams are streaming, send event if not */
 	for (int i = 0; i < CONFIG_BT_ISO_MAX_CIG; i++) {
 		for (int j = 0; j < ARRAY_SIZE(unicast_servers[i][0]); j++) {
-			if (le_audio_ep_state_check(
-				    unicast_servers[i][0][j].cap_sink_stream.bap_stream.ep,
-				    BT_BAP_EP_STATE_STREAMING) ||
-			    le_audio_ep_state_check(
-				    unicast_servers[i][0][j].cap_source_stream.bap_stream.ep,
-				    BT_BAP_EP_STATE_STREAMING)) {
-				return;
+			for (int k = 0; k < unicast_servers[i][0][j].num_sink_eps; k++) {
+				if (le_audio_ep_state_check(unicast_servers[i][0][j]
+								    .cap_sink_stream[k]
+								    .bap_stream.ep,
+							    BT_BAP_EP_STATE_STREAMING) ||
+				    le_audio_ep_state_check(
+					    unicast_servers[i][0][j]
+						    .cap_source_stream.bap_stream.ep,
+					    BT_BAP_EP_STATE_STREAMING)) {
+					return;
+				}
 			}
 		}
 	}
@@ -1385,7 +1464,9 @@ static void disconnected_cleanup(struct stream_index idx)
 		&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3];
 
 	unicast_server->device_conn = NULL;
-	unicast_server->sink_ep = NULL;
+	for (int i = 0; i < unicast_server->num_sink_eps; i++) {
+		unicast_server->sink_ep[i] = NULL;
+	}
 	memset(unicast_server->sink_codec_cap, 0, sizeof(unicast_server->sink_codec_cap));
 	unicast_server->source_ep = NULL;
 	memset(unicast_server->source_codec_cap, 0, sizeof(unicast_server->source_codec_cap));
@@ -1481,8 +1562,9 @@ static void unicast_stop_complete_cb(int err, struct bt_conn *conn)
 				};
 				ret = k_msgq_put(&cap_start_q, &idx, K_NO_WAIT);
 				if (ret) {
-					LOG_ERR("Failed to put device_index %d on the queue: %d", j,
-						ret);
+					LOG_ERR("Failed to put device_index %d on the "
+						"queue: %d",
+						j, ret);
 				}
 				k_work_submit(&cap_start_work);
 			}
@@ -1528,7 +1610,7 @@ int unicast_client_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint3
 		&unicast_servers[idx.lvl1][idx.lvl2][idx.lvl3];
 
 	if (dir == BT_AUDIO_DIR_SINK) {
-		if (unicast_server->cap_sink_stream.bap_stream.codec_cfg == NULL) {
+		if (unicast_server->cap_sink_stream[0].bap_stream.codec_cfg == NULL) {
 			LOG_ERR("No codec found for the stream");
 
 			return -ENXIO;
@@ -1536,7 +1618,7 @@ int unicast_client_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint3
 
 		if (sampling_rate_hz != NULL) {
 			ret = le_audio_freq_hz_get(
-				unicast_server->cap_sink_stream.bap_stream.codec_cfg,
+				unicast_server->cap_sink_stream[0].bap_stream.codec_cfg,
 				sampling_rate_hz);
 			if (ret) {
 				LOG_ERR("Invalid sampling frequency: %d", ret);
@@ -1546,7 +1628,7 @@ int unicast_client_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint3
 
 		if (bitrate != NULL) {
 			ret = le_audio_bitrate_get(
-				unicast_server->cap_sink_stream.bap_stream.codec_cfg, bitrate);
+				unicast_server->cap_sink_stream[0].bap_stream.codec_cfg, bitrate);
 			if (ret) {
 				LOG_ERR("Unable to calculate bitrate: %d", ret);
 				return -ENXIO;
@@ -1649,25 +1731,29 @@ int unicast_client_start(uint8_t cig_index)
 
 	for (int i = 0; i < ARRAY_SIZE(unicast_servers[cig_index][0]); i++) {
 		uint8_t state;
+		for (int j = 0; j < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; j++) {
+			ret = le_audio_ep_state_get(unicast_servers[cig_index][0][i].sink_ep[j],
+						    &state);
+			if (ret) {
+				continue;
+			}
 
-		ret = le_audio_ep_state_get(unicast_servers[cig_index][0][i].sink_ep, &state);
-		if (ret) {
-			continue;
-		}
-
-		if (state == BT_BAP_EP_STATE_IDLE) {
-			/* Start all streams in the configured state */
-			cap_stream_params[param.count].member.member =
-				unicast_servers[cig_index][0][i].device_conn;
-			cap_stream_params[param.count].stream =
-				&unicast_servers[cig_index][0][i].cap_sink_stream;
-			cap_stream_params[param.count].ep =
-				unicast_servers[cig_index][0][i].sink_ep;
-			cap_stream_params[param.count].codec_cfg = &lc3_preset_sink.codec_cfg;
-			param.count++;
-		} else {
-			LOG_WRN("Found unicast_server[%d] with an endpoint not in IDLE state: %d",
-				i, state);
+			if (state == BT_BAP_EP_STATE_IDLE) {
+				/* Start all streams in the configured state */
+				cap_stream_params[param.count].member.member =
+					unicast_servers[cig_index][0][i].device_conn;
+				cap_stream_params[param.count].stream =
+					&unicast_servers[cig_index][0][i].cap_sink_stream[j];
+				cap_stream_params[param.count].ep =
+					unicast_servers[cig_index][0][i].sink_ep[j];
+				cap_stream_params[param.count].codec_cfg =
+					&lc3_preset_sink.codec_cfg;
+				param.count++;
+			} else {
+				LOG_WRN("Found unicast_server[%d] with an endpoint not in IDLE "
+					"state: %d",
+					i, state);
+			}
 		}
 
 		ret = le_audio_ep_state_get(unicast_servers[cig_index][0][i].source_ep, &state);
@@ -1726,10 +1812,15 @@ int unicast_client_stop(uint8_t cig_index)
 	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, NULL, 0);
 
 	for (int i = 0; i < ARRAY_SIZE(unicast_servers[cig_index][0]); i++) {
-		if (le_audio_ep_state_check(unicast_servers[cig_index][0][i].sink_ep,
-					    BT_BAP_EP_STATE_STREAMING)) {
-			/* Stop all sink streams currently in a streaming state */
-			streams[param.count++] = &unicast_servers[cig_index][0][i].cap_sink_stream;
+		for (int j = 0; j < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; j++) {
+			if (le_audio_ep_state_check(unicast_servers[cig_index][0][i]
+							    .cap_sink_stream[j]
+							    .bap_stream.ep,
+						    BT_BAP_EP_STATE_STREAMING)) {
+				/* Stop all sink streams currently in a streaming state */
+				streams[param.count++] =
+					&unicast_servers[cig_index][0][i].cap_sink_stream[j];
+			}
 		}
 
 		if (le_audio_ep_state_check(unicast_servers[cig_index][0][i].source_ep,
@@ -1766,33 +1857,53 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 		return -EINVAL;
 	}
 
-	struct le_audio_tx_info tx[ARRAY_SIZE(unicast_servers[cig_index][0])];
+	struct le_audio_tx_info tx[(ARRAY_SIZE(unicast_servers[cig_index][0]) *
+				    CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT)];
 
 	for (int i = 0; i < ARRAY_SIZE(unicast_servers[cig_index][0]); i++) {
 		/* Skip unicast_servers not in a streaming state */
-		if (!le_audio_ep_state_check(
-			    unicast_servers[cig_index][0][i].cap_sink_stream.bap_stream.ep,
-			    BT_BAP_EP_STATE_STREAMING)) {
-			continue;
+		for (int j = 0; j < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; j++) {
+			if (!le_audio_ep_state_check(unicast_servers[cig_index][0][i]
+							     .cap_sink_stream[j]
+							     .bap_stream.ep,
+						     BT_BAP_EP_STATE_STREAMING)) {
+				continue;
+			}
+
+			/* Set cap stream pointer */
+			tx[num_active_streams].cap_stream =
+				&unicast_servers[cig_index][0][i].cap_sink_stream[j];
+
+			/* Set index */
+			tx[num_active_streams].idx.lvl1 = cig_index;
+			tx[num_active_streams].idx.lvl2 = 0;
+			tx[num_active_streams].idx.lvl3 = i;
+
+			/* Set channel location */
+			/* Both mono and left unicast_servers will receive left channel */
+			if (unicast_servers[cig_index][0][i].location ==
+				    BT_AUDIO_LOCATION_FRONT_LEFT ||
+			    unicast_servers[cig_index][0][i].location ==
+				    BT_AUDIO_LOCATION_MONO_AUDIO) {
+				tx[num_active_streams].audio_channel = AUDIO_CH_L;
+			} else if (unicast_servers[cig_index][0][i].location ==
+				   (BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT)) {
+				/* Stereo use case, send left to first ep and right to the
+				 * second */
+				if (j == 0) {
+					tx[num_active_streams].audio_channel = AUDIO_CH_L;
+				} else if (j == 1) {
+					tx[num_active_streams].audio_channel = AUDIO_CH_R;
+				} else {
+					LOG_ERR("Unexpected sink stream index: %d", j);
+					return -EINVAL;
+				}
+			} else {
+				tx[num_active_streams].audio_channel = AUDIO_CH_R;
+			}
+
+			num_active_streams++;
 		}
-
-		/* Set cap stream pointer */
-		tx[num_active_streams].cap_stream =
-			&unicast_servers[cig_index][0][i].cap_sink_stream;
-
-		/* Set index */
-		tx[num_active_streams].idx.lvl1 = cig_index;
-		tx[num_active_streams].idx.lvl2 = 0;
-		tx[num_active_streams].idx.lvl3 = i;
-
-		/* Set channel location */
-		/* Both mono and left unicast_servers will receive left channel */
-		tx[num_active_streams].audio_channel =
-			(unicast_servers[cig_index][0][i].location == BT_AUDIO_LOCATION_FRONT_RIGHT)
-				? AUDIO_CH_R
-				: AUDIO_CH_L;
-
-		num_active_streams++;
 	}
 
 	if (num_active_streams == 0) {
@@ -1839,8 +1950,10 @@ int unicast_client_enable(uint8_t cig_index, le_audio_receive_cb recv_cb)
 	receive_cb = recv_cb;
 
 	for (int i = 0; i < ARRAY_SIZE(unicast_servers[cig_index][0]); i++) {
-		bt_cap_stream_ops_register(&unicast_servers[cig_index][0][i].cap_sink_stream,
-					   &stream_ops);
+		for (int j = 0; j < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; j++) {
+			bt_cap_stream_ops_register(
+				&unicast_servers[cig_index][0][i].cap_sink_stream[j], &stream_ops);
+		}
 		bt_cap_stream_ops_register(&unicast_servers[cig_index][0][i].cap_source_stream,
 					   &stream_ops);
 	}

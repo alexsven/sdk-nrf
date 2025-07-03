@@ -121,6 +121,9 @@ void le_audio_rx_data_handler(struct net_buf *audio_frame_rx, struct audio_metad
 				existing_meta->bad_data |= meta->bad_data;
 
 				audio_frame_add(audio_frame, audio_frame_rx, meta);
+				// LOG_WRN("Received second audio frame with timestamp %u, locations
+				// " 	"0x%08x, bad_data %d", 	meta->ref_ts_us, meta->locations,
+				// meta->bad_data);
 
 				/* Check if we need to send the frame */
 				goto check_send;
@@ -151,6 +154,8 @@ void le_audio_rx_data_handler(struct net_buf *audio_frame_rx, struct audio_metad
 	}
 
 	audio_frame_add(audio_frame, audio_frame_rx, meta);
+	// LOG_WRN("Received audio frame with timestamp %u, locations 0x%08x, bad_data %d",
+	// 	meta->ref_ts_us, meta->locations, meta->bad_data);
 
 	/* Store metadata from the first frame */
 	memcpy(net_buf_user_data(audio_frame), meta, sizeof(struct audio_metadata));
@@ -162,6 +167,8 @@ check_send:
 		/* We have received all frames we are waiting for, pass data on to
 		 * the next module
 		 */
+		// LOG_WRN("Received audio frame with all channels (%d), sending to next module",
+		// 	le_audio_concurrent_sync_num_get());
 		ret = k_msgq_put(&ble_q_rx, (void *)&audio_frame, K_NO_WAIT);
 		ERR_CHK_MSG(ret, "Failed to put audio frame into queue");
 		audio_frame = NULL;
