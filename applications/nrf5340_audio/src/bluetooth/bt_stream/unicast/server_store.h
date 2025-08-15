@@ -95,7 +95,7 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server);
 
 int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t cis_index);
+			     uint8_t *cis_idx);
 
 int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir dir);
 
@@ -108,6 +108,8 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_store **server);
 
 int srv_store_num_get(void);
+
+int srv_store_server_get(struct server_store **server, uint8_t index);
 
 int srv_store_add(struct bt_conn *conn);
 

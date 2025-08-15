@@ -772,9 +772,11 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 }
 
 int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t cis_index)
+			     uint8_t *cis_idx)
 {
-	return -EPERM;
+	*cig_idx = 0;
+	*cis_idx = 0;
+	return 0;
 }
 
 int srv_store_stream_dir_get(struct bt_bap_stream const *const stream)
@@ -952,10 +954,23 @@ int srv_store_num_get(void)
 	return server_heap.size;
 }
 
+int srv_store_server_get(struct server_store **server, uint8_t index)
+{
+	if (index >= server_heap.size) {
+		return -EINVAL;
+	}
+
+	*server = (struct server_store *)min_heap_get_element(&server_heap, index);
+	if (*server == NULL) {
+		return -ENOENT;
+	}
+
+	return 0;
+}
+
 int srv_store_add(struct bt_conn *conn)
 {
 	struct server_store server;
-	memset(&server, 0, sizeof(struct server_store));
 
 	srv_store_clear_vars(&server);
 

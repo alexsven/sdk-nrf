@@ -28,7 +28,7 @@
 #include "server_store.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(unicast_client, CONFIG_UNICAST_CLIENT_LOG_LEVEL);
+LOG_MODULE_DECLARE(unicast_client, 4);
 
 ZBUS_CHAN_DEFINE(le_audio_chan, struct le_audio_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
@@ -102,9 +102,9 @@ static void cap_start_worker(struct k_work *work)
 
 	/* Create unicast group if it doesn't exist */
 	if (unicast_group_created == false) {
-		struct bt_bap_unicast_group_stream_pair_param pair_params[2];
+		struct bt_bap_unicast_group_stream_pair_param pair_params[1];
 		/* 2 streams (one sink and one source stream) for each unicast_server */
-		struct bt_bap_unicast_group_stream_param group_stream_params[4];
+		struct bt_bap_unicast_group_stream_param group_stream_params[1];
 		struct bt_bap_unicast_group_param group_param;
 
 		for (int i = 0; i < ARRAY_SIZE(group_stream_params); i++) {
@@ -170,39 +170,49 @@ static void cap_start_worker(struct k_work *work)
 	param.count = 0;
 	param.type = BT_CAP_SET_TYPE_AD_HOC;
 
+	uint8_t num_servers = srv_store_num_get();
+
 	/* Start all unicast_servers with valid endpoints */
-	// for (int i = 0; i < ARRAY_SIZE(unicast_servers[idx.lvl1][idx.lvl2]); i++) {
-	// 	unicast_server = &unicast_servers[idx.lvl1][idx.lvl2][i];
-	// 	uint8_t state;
+	for (int i = 0; i < num_servers; i++) {
+		ret = srv_store_server_get(&server, i);
+		uint8_t state;
 
-	// 	if (unicast_server->sink_ep) {
-	// 		ret = le_audio_ep_state_get(unicast_server->sink_ep, &state);
-	// 		if (state == BT_BAP_EP_STATE_STREAMING) {
-	// 			LOG_DBG("Sink endpoint is already streaming, skipping start");
-	// 			continue;
-	// 		}
+		if (server->snk.num_eps > 0) {
+			for (int j = 0; j < server->snk.num_eps; j++) {
+				ret = le_audio_ep_state_get(server->snk.eps[j], &state);
+				if (state == BT_BAP_EP_STATE_STREAMING) {
+					LOG_DBG("Sink endpoint is already streaming, skipping "
+						"start");
+					continue;
+				}
 
-	// 		cap_stream_params[param.count].member.member = unicast_server->device_conn;
-	// 		cap_stream_params[param.count].stream = &unicast_server->cap_sink_stream;
-	// 		cap_stream_params[param.count].ep = unicast_server->sink_ep;
-	// 		cap_stream_params[param.count].codec_cfg = &unicast_server->sink_codec_cfg;
-	// 		param.count++;
-	// 	}
+				cap_stream_params[param.count].member.member = server->conn;
+				cap_stream_params[param.count].stream = &server->snk.cap_streams[j];
+				cap_stream_params[param.count].ep = server->snk.eps[j];
+				cap_stream_params[param.count].codec_cfg =
+					&server->snk.lc3_preset[0].codec_cfg;
+				param.count++;
+			}
+		}
 
-	// 	if (unicast_server->source_ep) {
-	// 		ret = le_audio_ep_state_get(unicast_server->source_ep, &state);
-	// 		if (state == BT_BAP_EP_STATE_STREAMING) {
-	// 			LOG_DBG("Source endpoint is already streaming, skipping start");
-	// 			continue;
-	// 		}
+		if (server->src.num_eps > 0) {
+			for (int j = 0; j < server->src.num_eps; j++) {
+				ret = le_audio_ep_state_get(server->src.eps[j], &state);
+				if (state == BT_BAP_EP_STATE_STREAMING) {
+					LOG_DBG("Source endpoint is already streaming, skipping "
+						"start");
+					continue;
+				}
 
-	// 		cap_stream_params[param.count].member.member = unicast_server->device_conn;
-	// 		cap_stream_params[param.count].stream = &unicast_server->cap_source_stream;
-	// 		cap_stream_params[param.count].ep = unicast_server->source_ep;
-	// 		cap_stream_params[param.count].codec_cfg = &lc3_preset_source.codec_cfg;
-	// 		param.count++;
-	// 	}
-	// }
+				cap_stream_params[param.count].member.member = server->conn;
+				cap_stream_params[param.count].stream = &server->src.cap_streams[j];
+				cap_stream_params[param.count].ep = server->src.eps[j];
+				cap_stream_params[param.count].codec_cfg =
+					&server->src.lc3_preset[0].codec_cfg;
+				param.count++;
+			}
+		}
+	}
 
 	if (param.count == 0) {
 		LOG_DBG("No streams to start for device %p", (void *)conn);
@@ -213,7 +223,7 @@ static void cap_start_worker(struct k_work *work)
 	ret = bt_cap_initiator_unicast_audio_start(&param);
 	if (ret == -EBUSY) {
 		/* Try again once the ongoing start procedure is completed */
-		ret = k_msgq_put(&cap_start_q, NULL, K_NO_WAIT);
+		ret = k_msgq_put(&cap_start_q, conn, K_NO_WAIT);
 		if (ret) {
 			LOG_ERR("Failed to put device_index on the queue: %d", ret);
 		}
@@ -223,12 +233,11 @@ static void cap_start_worker(struct k_work *work)
 }
 K_WORK_DEFINE(cap_start_work, cap_start_worker);
 
-// static int update_cap_sink_stream_qos(struct le_audio_unicast_server *unicast_server,
-// 				      uint32_t pres_delay_us)
+// static int update_cap_sink_stream_qos(struct server_store *server, uint32_t pres_delay_us)
 // {
 // 	int ret;
 
-// 	if (unicast_server->cap_sink_stream.bap_stream.ep == NULL) {
+// 	if (server->snk.cap_streams.bap_stream.ep == NULL) {
 // 		return -ESRCH;
 // 	}
 
@@ -585,10 +594,17 @@ static void stream_sent_cb(struct bt_bap_stream *stream)
 
 	if (state == BT_BAP_EP_STATE_STREAMING) {
 
-		ret = srv_store_stream_idx_get(stream, &idx);
+		uint8_t cig_idx = 0;
+		uint8_t cis_index = 0;
+
+		/* Get the stream index for the stream */
+		ret = srv_store_stream_idx_get(stream, &cig_idx, &cis_index);
 		if (ret) {
 			LOG_ERR("Device index not found");
 		} else {
+			idx.lvl1 = cig_idx;
+			idx.lvl2 = LVL2;
+			idx.lvl3 = cis_index;
 			ERR_CHK(bt_le_audio_tx_stream_sent(idx));
 		}
 	} else {
@@ -601,15 +617,8 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 				 const struct bt_bap_qos_cfg_pref *pref)
 {
 	int ret;
-	uint32_t new_pres_dly_us;
+	uint32_t new_pres_dly_us = 0;
 	enum bt_audio_dir dir;
-	struct stream_index idx;
-
-	ret = srv_store_stream_idx_get(stream, &idx);
-	if (ret) {
-		LOG_ERR("Unknown connection, should not reach here");
-		return;
-	}
 
 	struct server_store *server = NULL;
 	ret = srv_store_from_stream_get(stream, &server);
@@ -645,8 +654,10 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 		return;
 	}
 
-	if (le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED)) {
+	if (le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED) &&
+	    new_pres_dly_us != stream->qos->pd) {
 		// check_and_update_pd_in_group(idx, new_pres_dly_us);
+		stream->qos->pd = new_pres_dly_us;
 	}
 
 	le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, stream->conn, dir);
@@ -684,9 +695,9 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 	}
 
 	if (IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
-		struct stream_index idx;
+		struct stream_index idx = {0};
 
-		ret = srv_store_stream_idx_get(stream, &idx);
+		ret = srv_store_stream_idx_get(stream, &idx.lvl1, &idx.lvl3);
 		if (ret) {
 			LOG_ERR("Device index not found");
 		} else {
@@ -773,7 +784,7 @@ static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_rec
 
 	struct stream_index idx;
 
-	ret = srv_store_stream_idx_get(stream, &idx);
+	ret = srv_store_stream_idx_get(stream, &idx.lvl1, &idx.lvl3);
 	if (ret) {
 		LOG_ERR("Device index not found");
 		return;
@@ -1202,33 +1213,37 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 
 	struct le_audio_tx_info tx[0];
 
-	// for (int i = 0; i < ARRAY_SIZE(unicast_servers[cig_index][LVL2]); i++) {
-	// 	/* Skip unicast_servers not in a streaming state */
-	// 	if (!le_audio_ep_state_check(
-	// 		    unicast_servers[cig_index][LVL2][i].cap_sink_stream.bap_stream.ep,
-	// 		    BT_BAP_EP_STATE_STREAMING)) {
-	// 		continue;
-	// 	}
+	for (int i = 0; i < srv_store_num_get(); i++) {
+		/* Skip unicast_servers not in a streaming state */
+		struct server_store *server = NULL;
+		ret = srv_store_server_get(&server, i);
+		for (int j = 0; j < server->snk.num_eps; j++) {
+			if (!le_audio_ep_state_check(server->snk.cap_streams[j].bap_stream.ep,
+						     BT_BAP_EP_STATE_STREAMING)) {
+				continue;
+			}
 
-	// 	/* Set cap stream pointer */
-	// 	tx[num_active_streams].cap_stream =
-	// 		&unicast_servers[cig_index][LVL2][i].cap_sink_stream;
+			/* Set cap stream pointer */
+			tx[num_active_streams].cap_stream = &server->snk.cap_streams[j];
 
-	// 	/* Set index */
-	// 	tx[num_active_streams].idx.lvl1 = cig_index;
-	// 	tx[num_active_streams].idx.lvl2 = LVL2;
-	// 	tx[num_active_streams].idx.lvl3 = i;
+			/* Set index */
+			tx[num_active_streams].idx.lvl1 = cig_index;
+			tx[num_active_streams].idx.lvl2 = LVL2;
+			tx[num_active_streams].idx.lvl3 = num_active_streams;
 
-	// 	/* Set channel location */
-	// 	/* Both mono and left unicast_servers will receive left channel */
-	// 	tx[num_active_streams].audio_channel =
-	// 		(unicast_servers[cig_index][LVL2][i].location ==
-	// 		 BT_AUDIO_LOCATION_FRONT_RIGHT)
-	// 			? AUDIO_CH_R
-	// 			: AUDIO_CH_L;
+			/* Set channel location */
+			/* Both mono and left unicast_servers will receive left channel */
+			const uint8_t *loc;
 
-	// 	num_active_streams++;
-	// }
+			bt_audio_codec_cfg_get_val(server->snk.cap_streams[j].bap_stream.codec_cfg,
+						   BT_AUDIO_CODEC_CFG_CHAN_ALLOC, &loc);
+
+			tx[num_active_streams].audio_channel =
+				*loc == BT_AUDIO_LOCATION_FRONT_RIGHT ? AUDIO_CH_R : AUDIO_CH_L;
+
+			num_active_streams++;
+		}
+	}
 
 	if (num_active_streams == 0) {
 		LOG_WRN("No active streams");
