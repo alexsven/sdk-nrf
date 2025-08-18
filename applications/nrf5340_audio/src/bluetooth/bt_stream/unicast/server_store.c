@@ -53,16 +53,6 @@ static bool min_heap_conn_eq(const void *node, const void *other)
 MIN_HEAP_DEFINE_STATIC(server_heap, CONFIG_BT_MAX_CONN, sizeof(struct server_store), 4,
 		       min_heap_cmp);
 
-int srv_store_src_num_get(uint8_t cig_idx)
-{
-	return -EPERM;
-}
-
-int srv_store_snk_num_get(uint8_t cig_idx)
-{
-	return -EPERM;
-}
-
 struct pd {
 	uint32_t min;
 	uint32_t max;
@@ -561,11 +551,6 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 	return 0;
 }
 
-int srv_store_cig_pres_dly_find(uint8_t cig_id, uint32_t *common_pres_dly_us, enum bt_audio_dir dir)
-{
-	return -EPERM;
-}
-
 int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc)
 {
 	int ret;
@@ -602,101 +587,6 @@ int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_
 	}
 
 	return 0;
-}
-
-int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_ctx,
-				enum bt_audio_context src_ctx)
-{
-	int ret;
-
-	if (conn == NULL) {
-		LOG_ERR("No valid connection pointer received");
-		return -EINVAL;
-	}
-
-	struct server_store *server = NULL;
-
-	ret = srv_store_from_conn_get(conn, &server);
-	if (ret < 0) {
-		return ret;
-	}
-
-	server->snk.available_ctx = snk_ctx;
-	server->src.available_ctx = src_ctx;
-
-	return 0;
-}
-
-int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
-			    const struct bt_audio_codec_cap *codec)
-{
-	int ret;
-
-	if (conn == NULL) {
-		LOG_ERR("No valid connection pointer received");
-		return -EINVAL;
-	}
-
-	if (codec == NULL) {
-		LOG_ERR("Codec capability is NULL");
-		return -EINVAL;
-	}
-
-	if (codec->data_len > CONFIG_BT_AUDIO_CODEC_CAP_MAX_DATA_SIZE) {
-		LOG_ERR("Codec data length exceeds maximum size: %d", codec->data_len);
-		return -EINVAL;
-	}
-
-	if (dir != BT_AUDIO_DIR_SINK && dir != BT_AUDIO_DIR_SOURCE) {
-		LOG_ERR("Invalid direction: %d", dir);
-		return -EINVAL;
-	}
-
-	struct server_store *server = NULL;
-
-	ret = srv_store_from_conn_get(conn, &server);
-	if (ret < 0) {
-		return ret;
-	}
-
-	if (codec->data_len > CONFIG_BT_AUDIO_CODEC_CAP_MAX_DATA_SIZE) {
-		LOG_ERR("Codec data length exceeds maximum size: %d", codec->data_len);
-		return -EINVAL;
-	}
-
-	if (dir == BT_AUDIO_DIR_SINK) {
-		/* num_codec_caps is an increasing index that starts at 0 */
-		if (server->snk.num_codec_caps >= ARRAY_SIZE(server->snk.codec_caps)) {
-			LOG_WRN("No more space (%d) for sink codec capabilities, increase "
-				"CONFIG_CODEC_CAP_COUNT_MAX(%d)",
-				server->snk.num_codec_caps, ARRAY_SIZE(server->snk.codec_caps));
-			return -ENOMEM;
-		}
-
-		memcpy(&server->snk.codec_caps[server->snk.num_codec_caps], codec,
-		       sizeof(struct bt_audio_codec_cap));
-		server->snk.num_codec_caps++;
-	} else if (dir == BT_AUDIO_DIR_SOURCE) {
-		/* num_codec_caps is an increasing index that starts at 0 */
-		if (server->src.num_codec_caps >= ARRAY_SIZE(server->src.codec_caps)) {
-			LOG_WRN("No more space for source codec capabilities, increase "
-				"CONFIG_CODEC_CAP_COUNT_MAX");
-			return -ENOMEM;
-		}
-
-		memcpy(&server->src.codec_caps[server->src.num_codec_caps], codec,
-		       sizeof(struct bt_audio_codec_cap));
-		server->src.num_codec_caps++;
-	} else {
-		LOG_WRN("PAC record direction not recognized: %d", dir);
-	}
-
-	return 0;
-}
-
-int srv_store_ep_set(struct bt_conn *conn, enum bt_audio_dir dir, struct bt_bap_ep *ep)
-{
-	return -EPERM;
 }
 
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
@@ -779,31 +669,6 @@ int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *
 	return 0;
 }
 
-int srv_store_stream_dir_get(struct bt_bap_stream const *const stream)
-{
-	int ret;
-
-	if (stream == NULL) {
-		LOG_ERR("Stream is NULL");
-		return -EINVAL;
-	}
-
-	if (stream->ep == NULL) {
-		LOG_ERR("Stream endpoint is NULL");
-		return -EINVAL;
-	}
-
-	struct bt_bap_ep_info ep_info;
-
-	ret = bt_bap_ep_get_info(stream->ep, &ep_info);
-	if (ret) {
-		LOG_ERR("Failed to get endpoint info: %d", ret);
-		return ret;
-	}
-
-	return ep_info.dir;
-}
-
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server)
 {
@@ -855,8 +720,8 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 	return 0;
 }
 
-int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_bap_ep_state state,
-			     enum bt_audio_dir dir)
+static int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_bap_ep_state state,
+				    enum bt_audio_dir dir)
 {
 	int ret;
 	int count = 0;
@@ -937,6 +802,92 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 	}
 
 	return count_total;
+}
+
+int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_ctx,
+				enum bt_audio_context src_ctx)
+{
+	int ret;
+
+	if (conn == NULL) {
+		LOG_ERR("No valid connection pointer received");
+		return -EINVAL;
+	}
+
+	struct server_store *server = NULL;
+
+	ret = srv_store_from_conn_get(conn, &server);
+	if (ret < 0) {
+		return ret;
+	}
+
+	server->snk.available_ctx = snk_ctx;
+	server->src.available_ctx = src_ctx;
+
+	return 0;
+}
+
+int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
+			    const struct bt_audio_codec_cap *codec)
+{
+	int ret;
+
+	if (conn == NULL) {
+		LOG_ERR("No valid connection pointer received");
+		return -EINVAL;
+	}
+
+	if (codec == NULL) {
+		LOG_ERR("Codec capability is NULL");
+		return -EINVAL;
+	}
+
+	if (codec->data_len > CONFIG_BT_AUDIO_CODEC_CAP_MAX_DATA_SIZE) {
+		LOG_ERR("Codec data length exceeds maximum size: %d", codec->data_len);
+		return -ENOMEM;
+	}
+
+	struct server_store *server = NULL;
+
+	ret = srv_store_from_conn_get(conn, &server);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (codec->data_len > CONFIG_BT_AUDIO_CODEC_CAP_MAX_DATA_SIZE) {
+		LOG_ERR("Codec data length exceeds maximum size: %d", codec->data_len);
+		return -EINVAL;
+	}
+
+	if (dir == BT_AUDIO_DIR_SINK) {
+		/* num_codec_caps is an increasing index that starts at 0 */
+		if (server->snk.num_codec_caps >= ARRAY_SIZE(server->snk.codec_caps)) {
+			LOG_WRN("No more space (%d) for sink codec capabilities, increase "
+				"CONFIG_CODEC_CAP_COUNT_MAX(%d)",
+				server->snk.num_codec_caps, ARRAY_SIZE(server->snk.codec_caps));
+			return -ENOMEM;
+		}
+
+		memcpy(&server->snk.codec_caps[server->snk.num_codec_caps], codec,
+		       sizeof(struct bt_audio_codec_cap));
+		server->snk.num_codec_caps++;
+	} else if (dir == BT_AUDIO_DIR_SOURCE) {
+		/* num_codec_caps is an increasing index that starts at 0 */
+		if (server->src.num_codec_caps >= ARRAY_SIZE(server->src.codec_caps)) {
+			LOG_WRN("No more space for source codec capabilities, increase "
+				"CONFIG_CODEC_CAP_COUNT_MAX");
+			return -ENOMEM;
+		}
+
+		memcpy(&server->src.codec_caps[server->src.num_codec_caps], codec,
+		       sizeof(struct bt_audio_codec_cap));
+		server->src.num_codec_caps++;
+	} else {
+		LOG_ERR("PAC record direction not recognized: %d", dir);
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_store **server)

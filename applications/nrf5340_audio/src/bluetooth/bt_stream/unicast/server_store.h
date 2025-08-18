@@ -55,16 +55,6 @@ struct server_store {
 	struct unicast_server_src_vars src;
 };
 
-int srv_store_src_num_get(uint8_t cig_id);
-
-int srv_store_snk_num_get(uint8_t cig_id);
-
-// What is unicast group versus CIG?
-int srv_store_cig_get(uint8_t cig_id, struct bt_bap_stream const *const stream);
-
-int srv_store_cig_pres_dly_find(uint8_t cig_id, uint32_t *common_pres_dly_us,
-				enum bt_audio_dir dir);
-
 /**
  * @brief Search for a common presentation delay across all server Audio Stream Endpoints (ASEs) for
  * the given direction. This function will try to satisfy the preffered presentation delay for all
@@ -86,16 +76,24 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 
 int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc);
 
+/* This struct will be passed to the function below to check for valid caps
+ * struct client_supp_configs {
+ * enum bt_audio_codec_cap_freq freq;
+ * enum bt_audio_codec_cap_frame_dur dur;
+ * enum bt_audio_codec_cap_chan_count chan_count;
+ * struct bt_audio_codec_octets_per_codec_frame oct_per_codec_frame;
+ *
+ * };
+ */
+
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
 				    uint32_t *valid_codec_caps);
 
-int srv_store_stream_dir_get(struct bt_bap_stream const *const stream);
+int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
+			     uint8_t cis_idx);
 
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server);
-
-int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t *cis_idx);
 
 int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir dir);
 
@@ -117,8 +115,7 @@ int srv_store_remove(struct bt_conn *conn);
 
 int srv_store_remove_all(void);
 
-void srv_store_reset(struct server_store *server);
-
+/* */
 int srv_store_init(void);
 
 #endif /* _SERVER_STORE_H_ */

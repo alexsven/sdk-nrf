@@ -351,4 +351,25 @@ ZTEST(suite_server_store, test_7_pres_delay_multi_group)
 	zassert_equal(group_reconfig_needed, false, "Group reconfiguration should not be needed");
 }
 
+ZTEST(suite_server_store, test_8_cap_set)
+{
+	int ret;
+
+	uint32_t conn0 = 0x4000;
+
+	ret = srv_store_init();
+	zassert_equal(ret, 0, "Init did not return zero");
+
+	ret = srv_store_add((struct bt_conn *)conn0);
+	zassert_equal(ret, 0, "Adding server did not return zero");
+
+	struct bt_audio_codec_cap codec;
+
+	codec.id = 0xaa;
+	codec.data_len = 10;
+
+	ret = srv_store_codec_cap_set((struct bt_conn *)conn0, BT_AUDIO_DIR_SINK, &codec);
+	zassert_equal(ret, 0, "Setting codec capabilities did not return zero %d", ret);
+}
+
 ZTEST_SUITE(suite_server_store, NULL, NULL, NULL, NULL, NULL);
