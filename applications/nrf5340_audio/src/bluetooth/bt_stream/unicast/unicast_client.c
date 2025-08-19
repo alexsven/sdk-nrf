@@ -136,7 +136,7 @@ static void create_group(void)
 				continue;
 			}
 			group_sink_stream_params[group_sink_iterator].qos =
-				&tmp_server->snk.lc3_preset[0].qos;
+				&tmp_server->snk.lc3_preset[j].qos;
 			group_sink_stream_params[group_sink_iterator].stream =
 				&tmp_server->snk.cap_streams[j].bap_stream;
 			group_sink_iterator++;
@@ -149,7 +149,7 @@ static void create_group(void)
 				continue;
 			}
 			group_source_stream_params[group_source_iterator].qos =
-				&tmp_server->src.lc3_preset[0].qos;
+				&tmp_server->src.lc3_preset[j].qos;
 			group_source_stream_params[group_source_iterator].stream =
 				&tmp_server->src.cap_streams[j].bap_stream;
 			group_source_iterator++;
@@ -498,6 +498,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 				uint32_t left = BT_AUDIO_LOCATION_FRONT_LEFT;
 				uint32_t right = BT_AUDIO_LOCATION_FRONT_RIGHT;
 
+				LOG_WRN("STEREO sink found, setting up stereo codec capabilities");
 				ret = bt_audio_codec_cfg_set_val(
 					&server->snk.lc3_preset[0].codec_cfg,
 					BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&left,
@@ -507,9 +508,8 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 					return;
 				}
 
-				memcpy(&server->snk.lc3_preset[1].codec_cfg,
-				       &server->snk.lc3_preset[0].codec_cfg,
-				       sizeof(struct bt_audio_codec_cfg));
+				memcpy(&server->snk.lc3_preset[1], &server->snk.lc3_preset[0],
+				       sizeof(struct bt_bap_lc3_preset));
 
 				ret = bt_audio_codec_cfg_set_val(
 					&server->snk.lc3_preset[1].codec_cfg,
@@ -694,7 +694,6 @@ static void stream_enabled_cb(struct bt_bap_stream *stream)
 
 static void stream_started_cb(struct bt_bap_stream *stream)
 {
-	int ret;
 	enum bt_audio_dir dir;
 
 	dir = le_audio_stream_dir_get(stream);
