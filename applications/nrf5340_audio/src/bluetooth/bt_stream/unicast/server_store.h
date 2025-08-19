@@ -90,7 +90,7 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 				    uint32_t *valid_codec_caps);
 
 int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t cis_idx);
+			     uint8_t *cis_idx);
 
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server);

@@ -921,6 +921,17 @@ int srv_store_server_get(struct server_store **server, uint8_t index)
 
 int srv_store_add(struct bt_conn *conn)
 {
+	int ret;
+	struct server_store *temp_server = NULL;
+
+	/* Check if server already exists */
+	ret = srv_store_from_conn_get(conn, &temp_server);
+	if (ret == 0) {
+		/* Server already exists, no need to add */
+		LOG_DBG("Server already exists for conn: %p", (void *)conn);
+		return -EALREADY;
+	}
+
 	struct server_store server;
 
 	srv_store_clear_vars(&server);
