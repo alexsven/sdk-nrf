@@ -35,7 +35,7 @@ static atomic_ptr_t lock_owner;
 
 static void valid_entry_check(void)
 {
-	LOG_WRN("Stored: %p current: %p", atomic_ptr_get(&lock_owner), k_current_get());
+	LOG_DBG("Stored: %p current: %p", atomic_ptr_get(&lock_owner), k_current_get());
 	__ASSERT(k_sem_count_get(&sem) == 0, "Semaphore not taken");
 	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "Thread mismatch");
 }
@@ -1045,7 +1045,7 @@ int srv_store_lock(k_timeout_t timeout)
 	}
 
 	atomic_ptr_set(&lock_owner, k_current_get());
-	LOG_WRN("Stored thread %p", k_current_get());
+	LOG_DBG("Stored thread %p", k_current_get());
 
 	return 0;
 }
