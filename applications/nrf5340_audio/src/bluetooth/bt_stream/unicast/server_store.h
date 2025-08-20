@@ -55,6 +55,15 @@ struct server_store {
 	struct unicast_server_src_vars src;
 };
 
+int srv_store_src_num_get(uint8_t cig_id);
+
+int srv_store_snk_num_get(uint8_t cig_id);
+
+int srv_store_cig_get(uint8_t cig_id, struct bt_bap_stream const *const stream);
+
+int srv_store_cig_pres_dly_find(uint8_t cig_id, uint32_t *common_pres_dly_us,
+				enum bt_audio_dir dir);
+
 /**
  * @brief Search for a common presentation delay across all server Audio Stream Endpoints (ASEs) for
  * the given direction. This function will try to satisfy the preffered presentation delay for all
@@ -111,11 +120,14 @@ int srv_store_server_get(struct server_store **server, uint8_t index);
 
 int srv_store_add(struct bt_conn *conn);
 
-int srv_store_remove(struct bt_conn *conn);
+int srv_store_remove(struct bt_conn const *const conn);
 
 int srv_store_remove_all(void);
 
-/* */
+int srv_store_lock(k_timeout_t timeout);
+
+void srv_store_unlock(void);
+
 int srv_store_init(void);
 
 #endif /* _SERVER_STORE_H_ */

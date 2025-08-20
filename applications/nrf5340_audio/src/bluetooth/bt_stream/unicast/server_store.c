@@ -30,6 +30,16 @@ static struct bt_bap_lc3_preset lc3_preset_24_2_1 = BT_BAP_LC3_UNICAST_PRESET_24
 static struct bt_bap_lc3_preset lc3_preset_16_2_1 = BT_BAP_LC3_UNICAST_PRESET_16_2_1(
 	BT_AUDIO_LOCATION_ANY, (BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED));
 
+K_SEM_DEFINE(sem, 1, 1);
+static atomic_ptr_t lock_owner;
+
+static void valid_entry_check(void)
+{
+	LOG_WRN("Stored: %p current: %p", atomic_ptr_get(&lock_owner), k_current_get());
+	__ASSERT(k_sem_count_get(&sem) == 0, "Semaphore not taken");
+	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "Thread mismatch");
+}
+
 /* This array keeps track of all the remote unicast servers this unicast client is operating on.
  **/
 /* static struct server_store servers[CONFIG_BT_MAX_CONN]; */
@@ -403,6 +413,17 @@ static bool pres_dly_ignore_stream(struct bt_bap_stream const *const existing_st
 	return false;
 }
 
+static int srv_store_from_conn_get_internal(struct bt_conn const *const conn,
+					    struct server_store **server)
+{
+	*server = (struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, NULL);
+	if (*server == NULL) {
+		return -ENOENT;
+	}
+
+	return 0;
+}
+
 /* One needs to look at the group pointer, if this group pointer already exists, we may need
 to update the entire group. If it is a new group, no reconfig is needed.
 *  New A, no ext group
@@ -417,6 +438,10 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 			    struct bt_bap_qos_cfg_pref const *qos_cfg_pref_in,
 			    bool *group_reconfig_needed)
 {
+	valid_entry_check();
+
+	int ret;
+
 	if (stream == NULL || computed_pres_dly_us == NULL || qos_cfg_pref_in == NULL ||
 	    group_reconfig_needed == NULL) {
 		LOG_ERR("NULL parameter");
@@ -432,8 +457,6 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 		LOG_ERR("Incoming pd_min or pd_max is zero");
 		return -EINVAL;
 	}
-
-	int ret;
 
 	*group_reconfig_needed = false;
 	*computed_pres_dly_us = UINT32_MAX;
@@ -553,6 +576,8 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 
 int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc)
 {
+	valid_entry_check();
+
 	int ret;
 
 	if (conn == NULL) {
@@ -567,7 +592,7 @@ int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_
 
 	struct server_store *server = NULL;
 
-	ret = srv_store_from_conn_get(conn, &server);
+	ret = srv_store_from_conn_get_internal(conn, &server);
 	if (ret < 0) {
 		return ret;
 	}
@@ -592,6 +617,10 @@ int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
 				    uint32_t *valid_codec_caps)
 {
+	valid_entry_check();
+
+	int ret;
+
 	*valid_codec_caps = 0;
 	if (conn == NULL || valid_codec_caps == NULL) {
 		LOG_ERR("Invalid parameters: conn or valid_codec_caps is NULL");
@@ -599,7 +628,7 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 	}
 
 	struct server_store *server = NULL;
-	int ret = srv_store_from_conn_get(conn, &server);
+	ret = srv_store_from_conn_get_internal(conn, &server);
 	if (ret < 0) {
 		LOG_ERR("Unknown connection, should not reach here");
 		return ret;
@@ -664,6 +693,8 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
 			     uint8_t *cis_idx)
 {
+	valid_entry_check();
+
 	*cig_idx = 0;
 	*cis_idx = 0;
 	return 0;
@@ -672,6 +703,8 @@ int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server)
 {
+	valid_entry_check();
+
 	struct server_store *tmp_server = NULL;
 	uint32_t matches = 0;
 
@@ -723,11 +756,13 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 static int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_bap_ep_state state,
 				    enum bt_audio_dir dir)
 {
+	valid_entry_check();
+
 	int ret;
 	int count = 0;
 	struct server_store *server = NULL;
 
-	ret = srv_store_from_conn_get(conn, &server);
+	ret = srv_store_from_conn_get_internal(conn, &server);
 	if (ret < 0) {
 		return ret;
 	}
@@ -783,6 +818,8 @@ static int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_ba
 
 int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir dir)
 {
+	valid_entry_check();
+
 	int count = 0;
 	int count_total = 0;
 	struct server_store *server = NULL;
@@ -807,6 +844,7 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_ctx,
 				enum bt_audio_context src_ctx)
 {
+	valid_entry_check();
 	int ret;
 
 	if (conn == NULL) {
@@ -830,6 +868,7 @@ int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_
 int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 			    const struct bt_audio_codec_cap *codec)
 {
+	valid_entry_check();
 	int ret;
 
 	if (conn == NULL) {
@@ -849,7 +888,7 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 
 	struct server_store *server = NULL;
 
-	ret = srv_store_from_conn_get(conn, &server);
+	ret = srv_store_from_conn_get_internal(conn, &server);
 	if (ret < 0) {
 		return ret;
 	}
@@ -892,21 +931,24 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 
 int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_store **server)
 {
-	*server = (struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, NULL);
-	if (*server == NULL) {
-		return -ENOENT;
-	}
+	valid_entry_check();
+	int ret;
 
-	return 0;
+	/* Sem not given as this must be given by user */
+	ret = srv_store_from_conn_get_internal(conn, server);
+	return ret;
 }
 
 int srv_store_num_get(void)
 {
+	valid_entry_check();
 	return server_heap.size;
 }
 
 int srv_store_server_get(struct server_store **server, uint8_t index)
 {
+	valid_entry_check();
+
 	if (index >= server_heap.size) {
 		return -EINVAL;
 	}
@@ -921,6 +963,8 @@ int srv_store_server_get(struct server_store **server, uint8_t index)
 
 int srv_store_add(struct bt_conn *conn)
 {
+	valid_entry_check();
+
 	int ret;
 	struct server_store *temp_server = NULL;
 
@@ -937,11 +981,14 @@ int srv_store_add(struct bt_conn *conn)
 	srv_store_clear_vars(&server);
 
 	server.conn = conn;
+
 	return min_heap_push(&server_heap, (void *)&server);
+	;
 }
 
-int srv_store_remove(struct bt_conn *conn)
+int srv_store_remove(struct bt_conn const *const conn)
 {
+	valid_entry_check();
 	struct server_store *dummy_server;
 	size_t id;
 
@@ -954,12 +1001,12 @@ int srv_store_remove(struct bt_conn *conn)
 	if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
 		return -ENOENT;
 	}
-
 	return 0;
 }
 
-int srv_store_remove_all(void)
+static int srv_store_remove_all_internal(void)
 {
+	valid_entry_check();
 	struct server_store dummy_server;
 
 	while (!min_heap_is_empty(&server_heap)) {
@@ -973,7 +1020,47 @@ int srv_store_remove_all(void)
 	return 0;
 }
 
+int srv_store_remove_all(void)
+{
+	valid_entry_check();
+	int ret;
+
+	ret = srv_store_remove_all_internal();
+	if (ret) {
+		return ret;
+	}
+
+	return 0;
+}
+
+int srv_store_lock(k_timeout_t timeout)
+
+{
+	int ret;
+
+	ret = k_sem_take(&sem, timeout);
+	if (ret) {
+		LOG_ERR("Failed to take semaphore, error: %d", ret);
+		return ret;
+	}
+
+	atomic_ptr_set(&lock_owner, k_current_get());
+	LOG_WRN("Stored thread %p", k_current_get());
+
+	return 0;
+}
+
+void srv_store_unlock(void)
+{
+	valid_entry_check();
+
+	atomic_ptr_set(&lock_owner, NULL);
+	k_sem_give(&sem);
+}
+
 int srv_store_init(void)
 {
-	return srv_store_remove_all();
+	valid_entry_check();
+
+	return srv_store_remove_all_internal();
 }
