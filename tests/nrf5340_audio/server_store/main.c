@@ -5,6 +5,7 @@
  */
 
 #include <zephyr/ztest.h>
+#include <zephyr/ztest_error_hook.h>
 #include <zephyr/tc_util.h>
 
 #include <zephyr/bluetooth/audio/audio.h>
@@ -24,11 +25,10 @@
 	test_##name##_cap_stream.bap_stream.group = (void *)0;                                     \
 	test_##name##_cap_stream.bap_stream.qos = &test_##name##_qos;
 
-ZTEST(suite_server_store, test_1_srv_store_init)
+ZTEST(suite_server_store, test_srv_store_init)
 {
 	int ret;
 
-	TC_PRINT("THREAD B %p\n", k_current_get());
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
@@ -52,7 +52,7 @@ ZTEST(suite_server_store, test_1_srv_store_init)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_2_srv_store_multiple)
+ZTEST(suite_server_store, test_srv_store_multiple)
 {
 	int ret;
 
@@ -157,7 +157,7 @@ ZTEST(suite_server_store, test_srv_store_pointer_check)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_3_srv_remove)
+ZTEST(suite_server_store, test_srv_remove)
 {
 	int ret;
 
@@ -189,7 +189,7 @@ ZTEST(suite_server_store, test_3_srv_remove)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_4_find_srv_from_stream)
+ZTEST(suite_server_store, test_find_srv_from_stream)
 {
 	int ret;
 
@@ -256,7 +256,7 @@ ZTEST(suite_server_store, test_4_find_srv_from_stream)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_5_pres_dly_simple)
+ZTEST(suite_server_store, test_pres_dly_simple)
 {
 	int ret;
 
@@ -304,7 +304,7 @@ ZTEST(suite_server_store, test_5_pres_dly_simple)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_6_pres_delay_advanced)
+ZTEST(suite_server_store, test_pres_delay_advanced)
 {
 	int ret;
 
@@ -374,7 +374,7 @@ ZTEST(suite_server_store, test_6_pres_delay_advanced)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_7_pres_delay_multi_group)
+ZTEST(suite_server_store, test_pres_delay_multi_group)
 {
 	int ret;
 
@@ -430,7 +430,7 @@ ZTEST(suite_server_store, test_7_pres_delay_multi_group)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_8_cap_set)
+ZTEST(suite_server_store, test_cap_set)
 {
 	int ret;
 
@@ -453,7 +453,7 @@ ZTEST(suite_server_store, test_8_cap_set)
 	srv_store_unlock();
 }
 
-ZTEST(suite_server_store, test_9_srv_get)
+ZTEST(suite_server_store, test_srv_get)
 {
 	int ret;
 
@@ -495,6 +495,26 @@ void before_fn(void *dummy)
 
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
+}
+
+/* Test that calling functions without lock triggers assertions */
+ZTEST(suite_server_store, test_assert_no_lock)
+{
+	/* First unlock to simulate not having the lock */
+	srv_store_unlock();
+
+	/* Enable assert catching to prevent actual crash */
+	ztest_set_assert_valid(true);
+
+	/* This should trigger the assertion in valid_entry_check() */
+	int ret = srv_store_num_get();
+
+	/* Disable assert catching */
+	ztest_set_assert_valid(false);
+
+	/* Re-acquire lock for cleanup */
+	ret = srv_store_lock(K_NO_WAIT);
+	zassert_equal(ret, 0, "Should be able to re-acquire lock");
 }
 
 ZTEST_SUITE(suite_server_store, NULL, NULL, before_fn, NULL, NULL);
