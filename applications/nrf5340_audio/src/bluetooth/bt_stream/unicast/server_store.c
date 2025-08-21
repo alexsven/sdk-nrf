@@ -33,11 +33,11 @@ static struct bt_bap_lc3_preset lc3_preset_16_2_1 = BT_BAP_LC3_UNICAST_PRESET_16
 K_SEM_DEFINE(sem, 1, 1);
 static atomic_ptr_t lock_owner;
 
-static void valid_entry_check(void)
+static void valid_entry_check(char const *const str)
 {
 	LOG_DBG("Stored: %p current: %p", atomic_ptr_get(&lock_owner), k_current_get());
-	__ASSERT(k_sem_count_get(&sem) == 0, "Semaphore not taken");
-	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "Thread mismatch");
+	__ASSERT(k_sem_count_get(&sem) == 0, "%s: Semaphore not taken", str);
+	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "%s: Thread mismatch", str);
 }
 
 /* This array keeps track of all the remote unicast servers this unicast client is operating on.
@@ -438,7 +438,7 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 			    struct bt_bap_qos_cfg_pref const *qos_cfg_pref_in,
 			    bool *group_reconfig_needed)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	int ret;
 
@@ -576,7 +576,7 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 
 int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	int ret;
 
@@ -617,7 +617,7 @@ int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
 				    uint32_t *valid_codec_caps)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	int ret;
 
@@ -693,17 +693,15 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
 			     uint8_t *cis_idx)
 {
-	valid_entry_check();
-
-	*cig_idx = 0;
-	*cis_idx = 0;
-	return 0;
+	valid_entry_check(__func__);
+	LOG_ERR("Stream %p not found in server store", stream);
+	return -ENOENT;
 }
 
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	struct server_store *tmp_server = NULL;
 	uint32_t matches = 0;
@@ -725,8 +723,9 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			if (memcmp(&tmp_server->snk.cap_streams[i].bap_stream, stream,
 				   sizeof(struct bt_bap_stream)) == 0) {
 				*server = tmp_server;
-				LOG_DBG("Found server for sink stream %p at index %d", stream,
-					srv_idx);
+				LOG_DBG("Found server for sink stream %p "
+					"at index %d",
+					stream, srv_idx);
 				matches++;
 			}
 		}
@@ -734,8 +733,9 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			if (memcmp(&tmp_server->src.cap_streams[i].bap_stream, stream,
 				   sizeof(struct bt_bap_stream)) == 0) {
 				*server = tmp_server;
-				LOG_DBG("Found server for source stream %p at index %d", stream,
-					srv_idx);
+				LOG_DBG("Found server for source stream %p "
+					"at index %d",
+					stream, srv_idx);
 				matches++;
 			}
 		}
@@ -745,7 +745,8 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 		LOG_ERR("No server found for the given stream");
 		return -ENOENT;
 	} else if (matches > 1) {
-		LOG_ERR("Multiple servers found for the same stream, this should "
+		LOG_ERR("Multiple servers found for the same stream, this "
+			"should "
 			"not happen");
 		return -ESPIPE;
 	}
@@ -756,7 +757,7 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 static int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_bap_ep_state state,
 				    enum bt_audio_dir dir)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	int ret;
 	int count = 0;
@@ -818,7 +819,7 @@ static int srv_store_ep_state_count(struct bt_conn const *const conn, enum bt_ba
 
 int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir dir)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	int count = 0;
 	int count_total = 0;
@@ -832,7 +833,9 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 		}
 		count = srv_store_ep_state_count(server->conn, state, dir);
 		if (count < 0) {
-			LOG_ERR("Failed to get ep state count for server %d: %d", srv_idx, count);
+			LOG_ERR("Failed to get ep state count for server "
+				"%d: %d",
+				srv_idx, count);
 			return count;
 		}
 		count_total += count;
@@ -844,7 +847,7 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_ctx,
 				enum bt_audio_context src_ctx)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 	int ret;
 
 	if (conn == NULL) {
@@ -868,7 +871,7 @@ int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_
 int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 			    const struct bt_audio_codec_cap *codec)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 	int ret;
 
 	if (conn == NULL) {
@@ -901,7 +904,8 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 	if (dir == BT_AUDIO_DIR_SINK) {
 		/* num_codec_caps is an increasing index that starts at 0 */
 		if (server->snk.num_codec_caps >= ARRAY_SIZE(server->snk.codec_caps)) {
-			LOG_WRN("No more space (%d) for sink codec capabilities, increase "
+			LOG_WRN("No more space (%d) for sink codec "
+				"capabilities, increase "
 				"CONFIG_CODEC_CAP_COUNT_MAX(%d)",
 				server->snk.num_codec_caps, ARRAY_SIZE(server->snk.codec_caps));
 			return -ENOMEM;
@@ -913,7 +917,8 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 	} else if (dir == BT_AUDIO_DIR_SOURCE) {
 		/* num_codec_caps is an increasing index that starts at 0 */
 		if (server->src.num_codec_caps >= ARRAY_SIZE(server->src.codec_caps)) {
-			LOG_WRN("No more space for source codec capabilities, increase "
+			LOG_WRN("No more space for source codec "
+				"capabilities, increase "
 				"CONFIG_CODEC_CAP_COUNT_MAX");
 			return -ENOMEM;
 		}
@@ -931,7 +936,7 @@ int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
 
 int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_store **server)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 	int ret;
 
 	/* Sem not given as this must be given by user */
@@ -941,13 +946,13 @@ int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_stor
 
 int srv_store_num_get(void)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 	return server_heap.size;
 }
 
 int srv_store_server_get(struct server_store **server, uint8_t index)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	if (index >= server_heap.size) {
 		return -EINVAL;
@@ -961,106 +966,106 @@ int srv_store_server_get(struct server_store **server, uint8_t index)
 	return 0;
 }
 
-int srv_store_add(struct bt_conn *conn)
-{
-	valid_entry_check();
+			int srv_store_add(struct bt_conn *conn)
+			{
+				valid_entry_check(__func__);
 
-	int ret;
-	struct server_store *temp_server = NULL;
+				int ret;
+				struct server_store *temp_server = NULL;
 
-	/* Check if server already exists */
-	ret = srv_store_from_conn_get(conn, &temp_server);
-	if (ret == 0) {
-		/* Server already exists, no need to add */
-		LOG_DBG("Server already exists for conn: %p", (void *)conn);
-		return -EALREADY;
-	}
+				/* Check if server already exists */
+				ret = srv_store_from_conn_get(conn, &temp_server);
+				if (ret == 0) {
+					/* Server already exists, no need to add */
+					LOG_DBG("Server already exists for conn: %p", (void *)conn);
+					return -EALREADY;
+				}
 
-	struct server_store server;
+				struct server_store server;
 
-	srv_store_clear_vars(&server);
+				srv_store_clear_vars(&server);
 
-	server.conn = conn;
+				server.conn = conn;
 
-	return min_heap_push(&server_heap, (void *)&server);
-	;
-}
+				return min_heap_push(&server_heap, (void *)&server);
+				;
+			}
 
-int srv_store_remove(struct bt_conn const *const conn)
-{
-	valid_entry_check();
-	struct server_store *dummy_server;
-	size_t id;
+			int srv_store_remove(struct bt_conn const *const conn)
+			{
+				valid_entry_check(__func__);
+				struct server_store *dummy_server;
+				size_t id;
 
-	dummy_server =
-		(struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, &id);
-	if (dummy_server == NULL) {
-		return -ENOENT;
-	}
+				dummy_server = (struct server_store *)min_heap_find(
+					&server_heap, min_heap_conn_eq, conn, &id);
+				if (dummy_server == NULL) {
+					return -ENOENT;
+				}
 
-	if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
-		return -ENOENT;
-	}
-	return 0;
-}
+				if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
+					return -ENOENT;
+				}
+				return 0;
+			}
 
-static int srv_store_remove_all_internal(void)
-{
-	valid_entry_check();
-	struct server_store dummy_server;
+			static int srv_store_remove_all_internal(void)
+			{
+				valid_entry_check(__func__);
+				struct server_store dummy_server;
 
-	while (!min_heap_is_empty(&server_heap)) {
-		if (!min_heap_pop(&server_heap, (void *)&dummy_server)) {
-			return -EIO;
-		}
+				while (!min_heap_is_empty(&server_heap)) {
+					if (!min_heap_pop(&server_heap, (void *)&dummy_server)) {
+						return -EIO;
+					}
 
-		memset(&dummy_server, 0, sizeof(struct server_store));
-	}
+					memset(&dummy_server, 0, sizeof(struct server_store));
+				}
 
-	return 0;
-}
+				return 0;
+			}
 
-int srv_store_remove_all(void)
-{
-	valid_entry_check();
-	int ret;
+			int srv_store_remove_all(void)
+			{
+				valid_entry_check(__func__);
+				int ret;
 
-	ret = srv_store_remove_all_internal();
-	if (ret) {
-		return ret;
-	}
+				ret = srv_store_remove_all_internal();
+				if (ret) {
+					return ret;
+				}
 
-	return 0;
-}
+				return 0;
+			}
 
-int srv_store_lock(k_timeout_t timeout)
+			int srv_store_lock(k_timeout_t timeout)
 
-{
-	int ret;
+			{
+				int ret;
 
-	ret = k_sem_take(&sem, timeout);
-	if (ret) {
-		LOG_ERR("Failed to take semaphore, error: %d", ret);
-		return ret;
-	}
+				ret = k_sem_take(&sem, timeout);
+				if (ret) {
+					LOG_ERR("Failed to take semaphore, error: %d", ret);
+					return ret;
+				}
 
-	atomic_ptr_set(&lock_owner, k_current_get());
-	LOG_DBG("Stored thread %p", k_current_get());
+				atomic_ptr_set(&lock_owner, k_current_get());
+				LOG_DBG("Stored thread %p", k_current_get());
 
-	return 0;
-}
+				return 0;
+			}
 
-void srv_store_unlock(void)
-{
-	valid_entry_check();
+			void srv_store_unlock(void)
+			{
+				valid_entry_check(__func__);
 
-	atomic_ptr_set(&lock_owner, NULL);
-	k_sem_give(&sem);
-}
+				atomic_ptr_set(&lock_owner, NULL);
+				k_sem_give(&sem);
+			}
 
-int srv_store_init(void)
-{
-	valid_entry_check();
+			int srv_store_init(void)
+			{
+				valid_entry_check(__func__);
 
-	return srv_store_remove_all_internal();
-}
+				return srv_store_remove_all_internal();
+			}
