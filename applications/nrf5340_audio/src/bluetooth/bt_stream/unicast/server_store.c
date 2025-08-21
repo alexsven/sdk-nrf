@@ -930,11 +930,7 @@ int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_stor
 
 int srv_store_num_get(void)
 {
-<<<<<<< HEAD
 	valid_entry_check(__func__);
-	return server_heap.size;
-=======
-	valid_entry_check();
 	int num_servers = 0;
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
@@ -944,7 +940,6 @@ int srv_store_num_get(void)
 	}
 
 	return num_servers;
->>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
 }
 
 int srv_store_server_get(struct server_store **server, uint8_t index)
@@ -986,61 +981,23 @@ int srv_store_add(struct bt_conn *conn)
 
 	server.conn = conn;
 
-<<<<<<< HEAD
-	return min_heap_push(&server_heap, (void *)&server);
-	;
-}
-
-int srv_store_remove(struct bt_conn const *const conn)
-{
-	valid_entry_check(__func__);
-	struct server_store *dummy_server;
-	size_t id;
-
-	dummy_server =
-		(struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, &id);
-	if (dummy_server == NULL) {
-		return -ENOENT;
-	}
-
-	if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
-		return -ENOENT;
-	}
-	return 0;
-}
-
-static int srv_store_remove_all_internal(void)
-{
-	valid_entry_check(__func__);
-	struct server_store dummy_server;
-
-	while (!min_heap_is_empty(&server_heap)) {
-		if (!min_heap_pop(&server_heap, (void *)&dummy_server)) {
-			return -EIO;
-		}
-
-		memset(&dummy_server, 0, sizeof(struct server_store));
-	}
-=======
 	return server_add(&server);
 }
 
 int _srv_store_remove(struct bt_conn const *const conn)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	return server_remove_by_conn(conn);
 }
 
 static int srv_store_remove_all_internal(void)
 {
-	valid_entry_check();
+	valid_entry_check(__func__);
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
 		srv_store_clear_vars(&servers[i]);
 	}
->>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
-
 	return 0;
 }
 
@@ -1068,12 +1025,7 @@ int srv_store_lock(k_timeout_t timeout)
 		return ret;
 	}
 
-<<<<<<< HEAD
 	atomic_ptr_set(&lock_owner, k_current_get());
-	LOG_DBG("Stored thread %p", k_current_get());
-=======
-	atomic_ptr_set(&lock_owner, k_current_get());
->>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
 
 	return 0;
 }
