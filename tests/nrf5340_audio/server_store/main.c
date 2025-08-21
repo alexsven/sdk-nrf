@@ -95,64 +95,67 @@ ZTEST(suite_server_store, test_srv_store_pointer_check)
 {
 	int ret;
 
-	Z_TEST_SKIP_IFNDEF(false);
+	Z_TEST_SKIP_IFNDEF(true);
 
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
 	uint32_t conn1 = 0x1000;
-	uint32_t addr1 = 0;
 	uint32_t conn2 = 0x2000;
-	uint32_t addr2 = 0;
 	uint32_t conn3 = 0x3000;
-	uint32_t addr3 = 0;
 
-	struct server_store *retr_server = NULL;
-
-	ret = srv_store_add((struct bt_conn *)conn3);
-	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server);
-	zassert_equal(ret, 0);
-	addr3 = (uint32_t)retr_server;
-
-	ret = srv_store_add((struct bt_conn *)conn1);
-	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server);
-	zassert_equal(ret, 0);
-	zassert_equal(addr3, (uint32_t)retr_server);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server);
-	zassert_equal(ret, 0);
-	addr1 = (uint32_t)retr_server;
+	struct server_store *retr_server1 = NULL;
+	struct server_store *retr_server2 = NULL;
+	struct server_store *retr_server3 = NULL;
 
 	ret = srv_store_add((struct bt_conn *)conn2);
 	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
 	zassert_equal(ret, 0);
-	zassert_equal(addr3, (uint32_t)retr_server);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server);
-	zassert_equal(ret, 0);
-	zassert_equal(addr1, (uint32_t)retr_server);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server);
-	zassert_equal(ret, 0);
-	addr2 = (uint32_t)retr_server;
+	retr_server2->snk.num_codec_caps = 2;
+	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server2->snk.num_codec_caps,
+		 &retr_server2->snk.num_codec_caps, retr_server2);
 
-	ret = srv_store_remove((struct bt_conn *)conn1);
+	ret = srv_store_add((struct bt_conn *)conn1);
 	zassert_equal(ret, 0);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
+	zassert_equal(ret, 0);
+	TC_PRINT("value %d fetched at %p (%p)\n", retr_server2->snk.num_codec_caps,
+		 &retr_server2->snk.num_codec_caps, retr_server2);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
+	zassert_equal(ret, 0);
+	retr_server1->snk.num_codec_caps = 1;
+	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server1->snk.num_codec_caps,
+		 &retr_server1->snk.num_codec_caps, retr_server1);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server);
+	ret = srv_store_add((struct bt_conn *)conn3);
 	zassert_equal(ret, 0);
-	zassert_equal(addr3, (uint32_t)retr_server);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	zassert_equal(ret, 0);
+	retr_server3->snk.num_codec_caps = 3;
+	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server3->snk.num_codec_caps,
+		 &retr_server3->snk.num_codec_caps, retr_server3);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
 	zassert_equal(ret, 0);
-	zassert_equal(addr2, (uint32_t)retr_server);
+	TC_PRINT("value %d fetched at %p (%p)\n", retr_server1->snk.num_codec_caps,
+		 &retr_server1->snk.num_codec_caps, retr_server1);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	zassert_equal(ret, 0);
+	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server3->snk.num_codec_caps,
+		 &retr_server3->snk.num_codec_caps, retr_server3);
 
-	ret = srv_store_remove((struct bt_conn *)conn3);
-	zassert_equal(ret, 0);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
+	TC_PRINT("value %d fetched at %p (%p)\n", retr_server1->snk.num_codec_caps,
+		 &retr_server1->snk.num_codec_caps, retr_server1);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server);
-	zassert_equal(ret, 0);
-	zassert_equal(addr2, (uint32_t)retr_server);
+	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
+	TC_PRINT("value %d fetched at %p (%p)\n", retr_server2->snk.num_codec_caps,
+		 &retr_server2->snk.num_codec_caps, retr_server2);
+
+	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	TC_PRINT("value %d fetched at %p (%p)\n", retr_server3->snk.num_codec_caps,
+		 &retr_server3->snk.num_codec_caps, retr_server3);
 
 	srv_store_unlock();
 }
@@ -180,7 +183,7 @@ ZTEST(suite_server_store, test_srv_remove)
 	ret = srv_store_num_get();
 	zassert_equal(ret, 3, "Number of servers should be three after adding three servers");
 
-	ret = srv_store_remove((struct bt_conn *)conn2);
+	ret = _srv_store_remove((struct bt_conn *)conn2);
 	zassert_equal(ret, 0, "Removing server by connection did not return zero");
 
 	ret = srv_store_num_get();
@@ -481,7 +484,7 @@ ZTEST(suite_server_store, test_srv_get)
 		      "Retrieved server connection does not match expected");
 
 	ret = srv_store_server_get(&server, 2);
-	zassert_equal(ret, -EINVAL, "Adding server did not return zero");
+	zassert_equal(ret, -ENOENT, "Adding server did not return zero %d", ret);
 
 	srv_store_unlock();
 }

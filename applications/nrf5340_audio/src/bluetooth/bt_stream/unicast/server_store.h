@@ -48,6 +48,7 @@ struct unicast_server_src_vars {
 /* This struct holds the actual values of codec configs and QoS across all CIGs */
 struct server_store {
 	char *name;
+	bt_addr_le_t resolved_addr;
 	struct bt_conn *conn;
 	const struct bt_csip_set_coordinator_set_member *member;
 
@@ -120,7 +121,8 @@ int srv_store_server_get(struct server_store **server, uint8_t index);
 
 int srv_store_add(struct bt_conn *conn);
 
-int srv_store_remove(struct bt_conn const *const conn);
+/* This function is only for testing and should not be used.*/
+int _srv_store_remove(struct bt_conn const *const conn);
 
 int srv_store_remove_all(void);
 

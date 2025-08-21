@@ -10,7 +10,6 @@
 #include <string.h>
 
 #include "server_store.h"
-#include "min_heap.h"
 #include "macros_common.h"
 
 /* TODO: Dicuss this include */
@@ -40,28 +39,38 @@ static void valid_entry_check(char const *const str)
 	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "%s: Thread mismatch", str);
 }
 
-/* This array keeps track of all the remote unicast servers this unicast client is operating on.
- **/
-/* static struct server_store servers[CONFIG_BT_MAX_CONN]; */
+static struct server_store servers[CONFIG_BT_MAX_CONN];
 
-static int min_heap_cmp(const void *a, const void *b)
+static int server_add(struct server_store *server)
 {
-	struct server_store *store_a = (struct server_store *)a;
-	struct server_store *store_b = (struct server_store *)b;
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		if (servers[i].conn == NULL) {
+			memcpy(&servers[i], server, sizeof(struct server_store));
+			return 0;
+		}
+	}
 
-	return &store_a->conn - &store_b->conn;
+	return -ENOMEM;
 }
 
-static bool min_heap_conn_eq(const void *node, const void *other)
+static int server_remove_by_conn(struct bt_conn const *const conn)
 {
-	const struct server_store *store = (const struct server_store *)node;
-	const struct bt_conn *conn = (const struct bt_conn *)other;
+	struct server_store *server = NULL;
 
-	return store->conn == conn;
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		if (servers[i].conn == conn) {
+			server = &servers[i];
+			break;
+		}
+	}
+
+	if (server == NULL) {
+		return -ENOENT;
+	}
+
+	memset(server, 0, sizeof(struct server_store));
+	return 0;
 }
-
-MIN_HEAP_DEFINE_STATIC(server_heap, CONFIG_BT_MAX_CONN, sizeof(struct server_store), 4,
-		       min_heap_cmp);
 
 struct pd {
 	uint32_t min;
@@ -353,32 +362,7 @@ static void srv_store_clear_vars(struct server_store *server)
 		return;
 	}
 
-	memset(&server->snk, 0, sizeof(server->snk));
-	memset(&server->src, 0, sizeof(server->src));
-
-	server->snk.num_codec_caps = 0;
-	server->snk.num_eps = 0;
-	server->src.num_codec_caps = 0;
-	server->src.num_eps = 0;
-
-	for (int i = 0; i < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; i++) {
-		server->snk.cap_streams[i].bap_stream.ep = NULL;
-	}
-
-	for (int i = 0; i < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT; i++) {
-		server->src.cap_streams[i].bap_stream.ep = NULL;
-	}
-
-	server->snk.waiting_for_disc = false;
-	server->src.waiting_for_disc = false;
-
-	server->snk.available_ctx = 0;
-	server->src.available_ctx = 0;
-
-	server->snk.supported_ctx = 0;
-	server->src.supported_ctx = 0;
-	server->snk.locations = 0;
-	server->src.locations = 0;
+	memset(server, 0, sizeof(struct server_store));
 }
 
 /* Check to see if the existing stream can be ignored when we try to find a valid presentation delay
@@ -416,12 +400,15 @@ static bool pres_dly_ignore_stream(struct bt_bap_stream const *const existing_st
 static int srv_store_from_conn_get_internal(struct bt_conn const *const conn,
 					    struct server_store **server)
 {
-	*server = (struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, NULL);
-	if (*server == NULL) {
-		return -ENOENT;
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		if (servers[i].conn == conn) {
+			*server = &servers[i];
+			return 0;
+		}
 	}
 
-	return 0;
+	*server = NULL;
+	return -ENOENT;
 }
 
 /* One needs to look at the group pointer, if this group pointer already exists, we may need
@@ -467,15 +454,14 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 	enum bt_audio_dir dir = ep_info.dir;
 
 	struct server_store *server = NULL;
-	for (int srv_idx = 0; srv_idx < server_heap.size; srv_idx++) {
+	for (int srv_idx = 0; srv_idx < CONFIG_BT_MAX_CONN; srv_idx++) {
 
 		/* Across all servers, we need to first check if another stream is in the
 		 * same subgroup as the new incoming stream.
 		 */
-		server = (struct server_store *)min_heap_get_element(&server_heap, srv_idx);
+		server = &servers[srv_idx];
 		if (server == NULL) {
-			LOG_ERR("Server is NULL at index %d", srv_idx);
-			return -EINVAL;
+			continue;
 		}
 
 		if (server->conn == stream->conn) {
@@ -713,11 +699,10 @@ int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 		return -EINVAL;
 	}
 
-	for (int srv_idx = 0; srv_idx < server_heap.size; srv_idx++) {
-		tmp_server = (struct server_store *)min_heap_get_element(&server_heap, srv_idx);
+	for (int srv_idx = 0; srv_idx < CONFIG_BT_MAX_CONN; srv_idx++) {
+		tmp_server = &servers[srv_idx];
 		if (server == NULL) {
-			LOG_ERR("Server is NULL at index %d", srv_idx);
-			return -EINVAL;
+			continue;
 		}
 		for (int i = 0; i < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; i++) {
 			if (memcmp(&tmp_server->snk.cap_streams[i].bap_stream, stream,
@@ -825,11 +810,10 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 	int count_total = 0;
 	struct server_store *server = NULL;
 
-	for (int srv_idx = 0; srv_idx < server_heap.size; srv_idx++) {
-		server = (struct server_store *)min_heap_get_element(&server_heap, srv_idx);
+	for (int srv_idx = 0; srv_idx < CONFIG_BT_MAX_CONN; srv_idx++) {
+		server = &servers[srv_idx];
 		if (server == NULL) {
-			LOG_ERR("Server is NULL at index %d", srv_idx);
-			return -EINVAL;
+			continue;
 		}
 		count = srv_store_ep_state_count(server->conn, state, dir);
 		if (count < 0) {
@@ -946,126 +930,165 @@ int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_stor
 
 int srv_store_num_get(void)
 {
+<<<<<<< HEAD
 	valid_entry_check(__func__);
 	return server_heap.size;
+=======
+	valid_entry_check();
+	int num_servers = 0;
+
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		if (servers[i].conn != NULL) {
+			num_servers++;
+		}
+	}
+
+	return num_servers;
+>>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
 }
 
 int srv_store_server_get(struct server_store **server, uint8_t index)
 {
 	valid_entry_check(__func__);
 
-	if (index >= server_heap.size) {
+	if (index >= CONFIG_BT_MAX_CONN) {
 		return -EINVAL;
 	}
 
-	*server = (struct server_store *)min_heap_get_element(&server_heap, index);
-	if (*server == NULL) {
+	if (servers[index].conn == NULL) {
+		*server = NULL;
 		return -ENOENT;
+	}
+
+	*server = &servers[index];
+
+	return 0;
+}
+
+int srv_store_add(struct bt_conn *conn)
+{
+	valid_entry_check(__func__);
+
+	int ret;
+	struct server_store *temp_server = NULL;
+
+	/* Check if server already exists */
+	ret = srv_store_from_conn_get(conn, &temp_server);
+	if (ret == 0) {
+		/* Server already exists, no need to add */
+		LOG_DBG("Server already exists for conn: %p", (void *)conn);
+		return -EALREADY;
+	}
+
+	struct server_store server;
+
+	srv_store_clear_vars(&server);
+
+	server.conn = conn;
+
+<<<<<<< HEAD
+	return min_heap_push(&server_heap, (void *)&server);
+	;
+}
+
+int srv_store_remove(struct bt_conn const *const conn)
+{
+	valid_entry_check(__func__);
+	struct server_store *dummy_server;
+	size_t id;
+
+	dummy_server =
+		(struct server_store *)min_heap_find(&server_heap, min_heap_conn_eq, conn, &id);
+	if (dummy_server == NULL) {
+		return -ENOENT;
+	}
+
+	if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
+		return -ENOENT;
+	}
+	return 0;
+}
+
+static int srv_store_remove_all_internal(void)
+{
+	valid_entry_check(__func__);
+	struct server_store dummy_server;
+
+	while (!min_heap_is_empty(&server_heap)) {
+		if (!min_heap_pop(&server_heap, (void *)&dummy_server)) {
+			return -EIO;
+		}
+
+		memset(&dummy_server, 0, sizeof(struct server_store));
+	}
+=======
+	return server_add(&server);
+}
+
+int _srv_store_remove(struct bt_conn const *const conn)
+{
+	valid_entry_check();
+
+	return server_remove_by_conn(conn);
+}
+
+static int srv_store_remove_all_internal(void)
+{
+	valid_entry_check();
+
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		srv_store_clear_vars(&servers[i]);
+	}
+>>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
+
+	return 0;
+}
+
+int srv_store_remove_all(void)
+{
+	valid_entry_check(__func__);
+	int ret;
+
+	ret = srv_store_remove_all_internal();
+	if (ret) {
+		return ret;
 	}
 
 	return 0;
 }
 
-			int srv_store_add(struct bt_conn *conn)
-			{
-				valid_entry_check(__func__);
+int srv_store_lock(k_timeout_t timeout)
 
-				int ret;
-				struct server_store *temp_server = NULL;
+{
+	int ret;
 
-				/* Check if server already exists */
-				ret = srv_store_from_conn_get(conn, &temp_server);
-				if (ret == 0) {
-					/* Server already exists, no need to add */
-					LOG_DBG("Server already exists for conn: %p", (void *)conn);
-					return -EALREADY;
-				}
+	ret = k_sem_take(&sem, timeout);
+	if (ret) {
+		LOG_ERR("Failed to take semaphore, error: %d", ret);
+		return ret;
+	}
 
-				struct server_store server;
+<<<<<<< HEAD
+	atomic_ptr_set(&lock_owner, k_current_get());
+	LOG_DBG("Stored thread %p", k_current_get());
+=======
+	atomic_ptr_set(&lock_owner, k_current_get());
+>>>>>>> 07f25e07e71 (Applications: nrf5340_audio: Removed min heap)
 
-				srv_store_clear_vars(&server);
+	return 0;
+}
 
-				server.conn = conn;
+void srv_store_unlock(void)
+{
+	valid_entry_check(__func__);
 
-				return min_heap_push(&server_heap, (void *)&server);
-				;
-			}
+	atomic_ptr_set(&lock_owner, NULL);
+	k_sem_give(&sem);
+}
 
-			int srv_store_remove(struct bt_conn const *const conn)
-			{
-				valid_entry_check(__func__);
-				struct server_store *dummy_server;
-				size_t id;
+int srv_store_init(void)
+{
+	valid_entry_check(__func__);
 
-				dummy_server = (struct server_store *)min_heap_find(
-					&server_heap, min_heap_conn_eq, conn, &id);
-				if (dummy_server == NULL) {
-					return -ENOENT;
-				}
-
-				if (!min_heap_remove(&server_heap, id, (void *)dummy_server)) {
-					return -ENOENT;
-				}
-				return 0;
-			}
-
-			static int srv_store_remove_all_internal(void)
-			{
-				valid_entry_check(__func__);
-				struct server_store dummy_server;
-
-				while (!min_heap_is_empty(&server_heap)) {
-					if (!min_heap_pop(&server_heap, (void *)&dummy_server)) {
-						return -EIO;
-					}
-
-					memset(&dummy_server, 0, sizeof(struct server_store));
-				}
-
-				return 0;
-			}
-
-			int srv_store_remove_all(void)
-			{
-				valid_entry_check(__func__);
-				int ret;
-
-				ret = srv_store_remove_all_internal();
-				if (ret) {
-					return ret;
-				}
-
-				return 0;
-			}
-
-			int srv_store_lock(k_timeout_t timeout)
-
-			{
-				int ret;
-
-				ret = k_sem_take(&sem, timeout);
-				if (ret) {
-					LOG_ERR("Failed to take semaphore, error: %d", ret);
-					return ret;
-				}
-
-				atomic_ptr_set(&lock_owner, k_current_get());
-				LOG_DBG("Stored thread %p", k_current_get());
-
-				return 0;
-			}
-
-			void srv_store_unlock(void)
-			{
-				valid_entry_check(__func__);
-
-				atomic_ptr_set(&lock_owner, NULL);
-				k_sem_give(&sem);
-			}
-
-			int srv_store_init(void)
-			{
-				valid_entry_check(__func__);
-
-				return srv_store_remove_all_internal();
-			}
+	return srv_store_remove_all_internal();
+}
