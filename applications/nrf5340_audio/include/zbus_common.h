@@ -44,6 +44,7 @@ struct le_audio_msg {
 	uint8_t set_size;
 	uint8_t const *sirk;
 	struct stream_index idx;
+	struct bt_bap_stream *stream;
 };
 
 /**

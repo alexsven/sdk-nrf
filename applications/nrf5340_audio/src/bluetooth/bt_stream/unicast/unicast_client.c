@@ -28,7 +28,7 @@
 #include "server_store.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(unicast_client, 4);
+LOG_MODULE_DECLARE(unicast_client, CONFIG_UNICAST_CLIENT_LOG_LEVEL);
 
 ZBUS_CHAN_DEFINE(le_audio_chan, struct le_audio_msg, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
 		 ZBUS_MSG_INIT(0));
@@ -45,8 +45,6 @@ struct discover_dir {
 	bool source;
 };
 
-K_MSGQ_DEFINE(cap_start_q, sizeof(struct bt_conn **), CONFIG_BT_ISO_MAX_CHAN, sizeof(void *));
-
 BUILD_ASSERT(CONFIG_BT_ISO_MAX_CIG == 1, "Only one CIG is supported");
 
 static le_audio_receive_cb receive_cb;
@@ -57,12 +55,13 @@ static bool unicast_group_created;
 static bool playing_state = true;
 
 static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn *conn,
-				   enum bt_audio_dir dir)
+				   struct bt_bap_stream *stream, enum bt_audio_dir dir)
 {
 	int ret;
 	struct le_audio_msg msg;
 
 	msg.event = event;
+	msg.stream = stream;
 	msg.conn = conn;
 	msg.dir = dir;
 
@@ -70,11 +69,27 @@ static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn 
 	ERR_CHK(ret);
 }
 
+static void stream_idx_get(struct bt_bap_stream *stream, struct stream_index *idx)
+{
+	int ret;
+	struct bt_iso_info info;
+
+	ret = bt_iso_chan_get_info(stream->iso, &info);
+	if (ret < 0) {
+		LOG_ERR("Failed to get ISO channel info: %d", ret);
+		return;
+	}
+
+	idx->lvl1 = info.unicast.cig_id;
+	idx->lvl2 = LVL2;
+	idx->lvl3 = info.unicast.cis_id;
+}
+
 static void create_group(void)
 {
 	int ret;
 	struct bt_bap_unicast_group_stream_pair_param
-		pair_params[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT / 2];
+		pair_params[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
 	struct bt_bap_unicast_group_stream_param
 		group_sink_stream_params[CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT];
 	struct bt_bap_unicast_group_stream_param
@@ -95,7 +110,6 @@ static void create_group(void)
 		return;
 	}
 
-	/* Remove */
 	/* Find out how many valid sink EPs we have */
 	uint8_t num_valid_sink_eps = 0;
 	uint8_t num_valid_source_eps = 0;
@@ -113,8 +127,7 @@ static void create_group(void)
 		num_valid_source_eps += tmp_server->src.num_eps;
 	}
 
-	LOG_INF("We have %d servers, with a total of %d valid sink EPs and %d valid source "
-		"EPs",
+	LOG_INF("We have %d servers, with a total of %d valid sink EPs and %d valid source EPs",
 		num_servers, num_valid_sink_eps, num_valid_source_eps);
 
 	if (num_valid_sink_eps == 0 && num_valid_source_eps == 0) {
@@ -142,7 +155,7 @@ static void create_group(void)
 		/* Add only the streams that has a valid preset set */
 		for (int j = 0; j < tmp_server->snk.num_eps; j++) {
 			if (tmp_server->snk.lc3_preset[j].qos.pd == 0) {
-				LOG_WRN("Sink EP %d has no valid preset, skipping", j);
+				LOG_DBG("Sink EP %d has no valid preset, skipping", j);
 				continue;
 			}
 			group_sink_stream_params[group_sink_iterator].qos =
@@ -155,7 +168,7 @@ static void create_group(void)
 		/* Add only the streams that has a valid preset set */
 		for (int j = 0; j < tmp_server->src.num_eps; j++) {
 			if (tmp_server->src.lc3_preset[j].qos.pd == 0) {
-				LOG_WRN("Source EP %d has no valid preset, skipping", j);
+				LOG_DBG("Source EP %d has no valid preset, skipping", j);
 				continue;
 			}
 			group_source_stream_params[group_source_iterator].qos =
@@ -210,26 +223,18 @@ static void create_group(void)
 static void cap_start_worker(struct k_work *work)
 {
 	int ret;
-	struct bt_conn *conn;
 
-	/* Check msgq for a pending start procedure */
-	ret = k_msgq_get(&cap_start_q, &conn, K_NO_WAIT);
-	if (ret) {
-		LOG_ERR("Failed to get device index for pending cap start procedure: %d", ret);
-		return;
-	}
-
-	uint8_t group_length = 0;
-	if (unicast_group != NULL) {
-		group_length = sys_slist_len(&unicast_group->streams);
-	}
-
-	/* Create unicast group if it doesn't exist */
+	/* Create a unicast group if it doesn't already exist */
 	if (unicast_group_created == false) {
 		create_group();
 		goto start_streams;
-	} else if (group_length >= CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT) {
-		/* The group is as full as it can get, just start the ones we have */
+	}
+
+	uint8_t group_length = 0;
+
+	group_length = sys_slist_len(&unicast_group->streams);
+	if (group_length >= CONFIG_BT_BAP_UNICAST_CLIENT_GROUP_STREAM_COUNT) {
+		/* The group is as full as it can get, start the relevant streams */
 		goto start_streams;
 	}
 
@@ -237,8 +242,7 @@ static void cap_start_worker(struct k_work *work)
 	 * waiting to join.
 	 */
 
-	/* Check if each of the connected conns in srv_store is in the group */
-	srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
 	if (ret < 0) {
 		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
 		return;
@@ -246,6 +250,7 @@ static void cap_start_worker(struct k_work *work)
 
 	uint8_t num_servers = srv_store_num_get();
 
+	/* Check if each of the connected conns in srv_store is in the unicast_group */
 	for (int i = 0; i < num_servers; i++) {
 		struct server_store *tmp_server = NULL;
 
@@ -265,7 +270,7 @@ static void cap_start_worker(struct k_work *work)
 		}
 
 		if (info.state != BT_CONN_STATE_CONNECTED) {
-			LOG_DBG("Connection %p is not connected, skipping start",
+			LOG_DBG("Connection %p is not connected, skipping",
 				(void *)tmp_server->conn);
 			continue;
 		}
@@ -279,6 +284,9 @@ static void cap_start_worker(struct k_work *work)
 		bool server_found = false;
 		struct bt_bap_stream *stream;
 
+		/* Check each of the streams in the unicast_group against all of the streams in the
+		 * server
+		 */
 		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream, _node) {
 			for (int j = 0; j < ARRAY_SIZE(tmp_server->snk.cap_streams); j++) {
 				if (memcmp(stream, &tmp_server->snk.cap_streams[j].bap_stream,
@@ -291,7 +299,9 @@ static void cap_start_worker(struct k_work *work)
 		}
 
 		if (!server_found) {
-			LOG_WRN("Server %d not found in unicast group, adding", i);
+			LOG_INF("Server %d not found in unicast group, will stop the current "
+				"streams and create a new group",
+				i);
 			srv_store_unlock();
 			unicast_client_stop(0);
 			unicast_group_created = false;
@@ -302,7 +312,7 @@ static void cap_start_worker(struct k_work *work)
 		}
 	}
 
-		srv_store_unlock();
+	srv_store_unlock();
 
 start_streams:
 
@@ -313,74 +323,6 @@ start_streams:
 	}
 }
 K_WORK_DEFINE(cap_start_work, cap_start_worker);
-
-// static int update_cap_sink_stream_qos(struct server_store *server, uint32_t
-// pres_delay_us)
-// {
-// 	int ret;
-
-// 	if (server->snk.cap_streams.bap_stream.ep == NULL) {
-// 		return -ESRCH;
-// 	}
-
-// 	if (unicast_server->cap_sink_stream.bap_stream.qos == NULL) {
-// 		LOG_WRN("No QoS found for %p", (void
-// *)&unicast_server->cap_sink_stream.bap_stream); 		return -ENXIO;
-// 	}
-
-// 	if (unicast_server->cap_sink_stream.bap_stream.qos->pd != pres_delay_us) {
-// 		struct bt_cap_unicast_audio_stop_param param;
-// 		struct bt_cap_stream *streams[2];
-
-// 		LOG_DBG("Current preset PD = %d us, target PD = %d us",
-// 			unicast_server->cap_sink_stream.bap_stream.qos->pd, pres_delay_us);
-
-// 		param.streams = streams;
-// 		param.count = 0;
-// 		param.type = BT_CAP_SET_TYPE_AD_HOC;
-// 		param.release = true;
-
-// 		if (playing_state &&
-// 		    le_audio_ep_state_check(unicast_server->cap_sink_stream.bap_stream.ep,
-// 					    BT_BAP_EP_STATE_STREAMING)) {
-// 			LOG_DBG("Update streaming %s unicast_server, connection %p, stream
-// %p", 				unicast_server->name, (void *)&unicast_server->device_conn,
-// (void
-// *)&unicast_server->cap_sink_stream.bap_stream);
-
-// 			unicast_server->qos_reconfigure = true;
-// 			unicast_server->reconfigure_pd = pres_delay_us;
-
-// 			streams[param.count] = &unicast_server->cap_sink_stream;
-// 			param.count++;
-// 		} else {
-// 			LOG_DBG("Reset %s unicast_server, connection %p, stream %p",
-// 				unicast_server->name, (void *)&unicast_server->device_conn,
-// 				(void *)&unicast_server->cap_sink_stream.bap_stream);
-// 			unicast_server->cap_sink_stream.bap_stream.qos->pd = pres_delay_us;
-// 		}
-
-// 		if (playing_state &&
-// 		    le_audio_ep_state_check(unicast_server->cap_source_stream.bap_stream.ep,
-// 					    BT_BAP_EP_STATE_STREAMING)) {
-// 			unicast_server->qos_reconfigure = true;
-// 			unicast_server->reconfigure_pd = pres_delay_us;
-
-// 			streams[param.count] = &unicast_server->cap_source_stream;
-// 			param.count++;
-// 		}
-
-// 		if (param.count > 0) {
-// 			ret = bt_cap_initiator_unicast_audio_stop(&param);
-// 			if (ret) {
-// 				LOG_WRN("Failed to stop streams: %d, use default PD in
-// preset", 					ret); 				return ret;
-// 			}
-// 		}
-// 	}
-
-// 	return 0;
-// }
 
 static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir dir,
 				       enum bt_audio_location loc)
@@ -396,16 +338,22 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 
 	ret = srv_store_from_conn_get(conn, &server);
 	if (ret) {
-		LOG_ERR("Unknown connection, should not reach here");
+		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
 		srv_store_unlock();
 		return;
 	}
 
 	if (loc & BT_AUDIO_LOCATION_FRONT_LEFT && loc & BT_AUDIO_LOCATION_FRONT_RIGHT) {
-		LOG_INF("Both front left and right channel locations are set, stereo "
-			"device found");
-		srv_store_location_set(
+		LOG_INF("Both front left and right channel locations are set, stereo device found");
+		ret = srv_store_location_set(
 			conn, dir, BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT);
+		if (ret) {
+			LOG_ERR("Failed to set location for conn %p, dir %d, loc %d: %d",
+				(void *)conn, dir, loc, ret);
+			srv_store_unlock();
+			return;
+		}
+
 		server->name = "STEREO";
 	} else if ((loc & BT_AUDIO_LOCATION_FRONT_LEFT) || (loc & BT_AUDIO_LOCATION_BACK_LEFT) ||
 		   (loc & BT_AUDIO_LOCATION_FRONT_LEFT_OF_CENTER) ||
@@ -445,290 +393,264 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 		server->name = "RIGHT";
 	} else {
 		LOG_WRN("Channel location not supported: %d", loc);
-		le_audio_event_publish(LE_AUDIO_EVT_NO_VALID_CFG, conn, dir);
+		le_audio_event_publish(LE_AUDIO_EVT_NO_VALID_CFG, conn, NULL, dir);
 	}
 
 	srv_store_unlock();
 }
 
-	static void available_contexts_cb(struct bt_conn *conn, enum bt_audio_context snk_ctx,
-					  enum bt_audio_context src_ctx)
-	{
-		int ret;
+static void available_contexts_cb(struct bt_conn *conn, enum bt_audio_context snk_ctx,
+				  enum bt_audio_context src_ctx)
+{
+	int ret;
 
-		LOG_DBG("conn: %p, snk ctx %d src ctx %d", (void *)conn, snk_ctx, src_ctx);
+	LOG_DBG("conn: %p, snk ctx %d src ctx %d", (void *)conn, snk_ctx, src_ctx);
 
-		ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
-		if (ret < 0) {
-			LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
-			return;
-		}
-
-		ret = srv_store_avail_context_set(conn, snk_ctx, src_ctx);
-		if (ret) {
-			LOG_ERR("Failed to set available contexts for conn %p, snk ctx %d src ctx "
-				"%d: %d",
-				(void *)conn, snk_ctx, src_ctx, ret);
-		}
-
-		srv_store_unlock();
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	if (ret < 0) {
+		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
+		return;
 	}
 
-	static void pac_record_cb(struct bt_conn *conn, enum bt_audio_dir dir,
-				  const struct bt_audio_codec_cap *codec)
-	{
-		int ret;
-
-		ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
-		if (ret < 0) {
-			LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
-			return;
-		}
-
-		if (codec->id != BT_HCI_CODING_FORMAT_LC3) {
-			LOG_DBG("Only the LC3 codec is supported");
-			srv_store_unlock();
-			return;
-		}
-
-		ret = srv_store_codec_cap_set(conn, dir, codec);
-		if (ret) {
-			LOG_ERR("Failed to set codec capability: %d", ret);
-		}
-
-		srv_store_unlock();
+	ret = srv_store_avail_context_set(conn, snk_ctx, src_ctx);
+	if (ret) {
+		LOG_ERR("Failed to set available contexts for conn %p, snk ctx %d src ctx %d: %d",
+			(void *)conn, snk_ctx, src_ctx, ret);
 	}
 
-	static void endpoint_cb(struct bt_conn *conn, enum bt_audio_dir dir, struct bt_bap_ep *ep)
-	{
-		int ret;
+	srv_store_unlock();
+}
 
-		ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
-		if (ret < 0) {
-			LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
-			return;
+static void pac_record_cb(struct bt_conn *conn, enum bt_audio_dir dir,
+			  const struct bt_audio_codec_cap *codec)
+{
+	int ret;
+
+	if (codec->id != BT_HCI_CODING_FORMAT_LC3) {
+		LOG_DBG("Only the LC3 codec is supported");
+		return;
+	}
+
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	if (ret < 0) {
+		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
+		return;
+	}
+
+	ret = srv_store_codec_cap_set(conn, dir, codec);
+	if (ret) {
+		LOG_ERR("Failed to set codec capability: %d", ret);
+	}
+
+	srv_store_unlock();
+}
+
+static void endpoint_cb(struct bt_conn *conn, enum bt_audio_dir dir, struct bt_bap_ep *ep)
+{
+	int ret;
+
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	if (ret < 0) {
+		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
+		return;
+	}
+
+	struct server_store *server = NULL;
+	ret = srv_store_from_conn_get(conn, &server);
+	if (ret) {
+		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+		srv_store_unlock();
+		return;
+	}
+
+	if (dir == BT_AUDIO_DIR_SINK) {
+		if (ep != NULL) {
+			if (server->snk.num_eps >= ARRAY_SIZE(server->snk.eps)) {
+				LOG_WRN("No more space (%d) for sink endpoints, increase "
+					"CONFIG_SNK_EP_COUNT_MAX (%d)",
+					server->snk.num_eps, ARRAY_SIZE(server->snk.eps));
+				srv_store_unlock();
+				return;
+			}
+
+			server->snk.eps[server->snk.num_eps] = ep;
+			server->snk.num_eps++;
 		}
 
-		struct server_store *server = NULL;
-		ret = srv_store_from_conn_get(conn, &server);
-		if (ret) {
-			LOG_ERR("Unknown connection, should not reach here");
-			srv_store_unlock();
-			return;
+		if (server->snk.eps[0] == NULL) {
+			LOG_WRN("No sink endpoints found");
+		}
+	} else if (dir == BT_AUDIO_DIR_SOURCE) {
+		if (ep != NULL) {
+			if (server->src.num_eps >= ARRAY_SIZE(server->src.eps)) {
+				LOG_WRN("No more space for source endpoints, increase "
+					"CONFIG_SRC_EP_COUNT_MAX");
+				srv_store_unlock();
+				return;
+			}
+
+			server->src.eps[server->src.num_eps] = ep;
+			server->src.num_eps++;
 		}
 
+		if (server->src.eps[0] == NULL) {
+			LOG_WRN("No source endpoints found");
+		}
+	} else {
+		LOG_WRN("Endpoint direction not recognized: %d", dir);
+	}
+
+	srv_store_unlock();
+}
+
+static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
+{
+	int ret;
+
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	if (ret < 0) {
+		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
+		return;
+	}
+
+	struct server_store *server = NULL;
+	ret = srv_store_from_conn_get(conn, &server);
+	if (ret) {
+		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+		srv_store_unlock();
+		return;
+	}
+
+	if (err == BT_ATT_ERR_ATTRIBUTE_NOT_FOUND) {
 		if (dir == BT_AUDIO_DIR_SINK) {
-			if (ep != NULL) {
-				if (server->snk.num_eps >= ARRAY_SIZE(server->snk.eps)) {
-					LOG_WRN("No more space (%d) for sink endpoints, increase "
-						"CONFIG_SNK_EP_COUNT_MAX (%d)",
-						server->snk.num_eps, ARRAY_SIZE(server->snk.eps));
-					srv_store_unlock();
-					return;
-				}
-
-				server->snk.eps[server->snk.num_eps] = ep;
-				server->snk.num_eps++;
-			}
-
-			if (server->snk.eps[0] == NULL) {
-				LOG_WRN("No sink endpoints found");
-			}
+			LOG_WRN("No sinks found");
+			server->snk.waiting_for_disc = false;
 		} else if (dir == BT_AUDIO_DIR_SOURCE) {
-			if (ep != NULL) {
-				if (server->src.num_eps >= ARRAY_SIZE(server->src.eps)) {
-					LOG_WRN("No more space for source endpoints, increase "
-						"CONFIG_SRC_EP_COUNT_MAX");
-					srv_store_unlock();
-					return;
-				}
-
-				server->src.eps[server->src.num_eps] = ep;
-				server->src.num_eps++;
-			}
-
-			if (server->src.eps[0] == NULL) {
-				LOG_WRN("No source endpoints found");
-			}
-		} else {
-			LOG_WRN("Endpoint direction not recognized: %d", dir);
+			LOG_WRN("No sources found");
+			server->src.waiting_for_disc = false;
 		}
-
+	} else if (err) {
+		LOG_ERR("Discovery failed: %d", err);
 		srv_store_unlock();
+		return;
 	}
 
-	static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
-	{
-		int ret;
+	if (dir == BT_AUDIO_DIR_SINK && !err) {
+		uint32_t valid_sink_caps = 0;
 
-		ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
-		if (ret < 0) {
-			LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
-			return;
-		}
+		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_sink_caps);
+		if (valid_sink_caps) {
 
-		struct server_store *server = NULL;
-		ret = srv_store_from_conn_get(conn, &server);
-		if (ret) {
-			LOG_ERR("Unknown connection, should not reach here");
-			srv_store_unlock();
-			return;
-		}
+			/* Get the valid configuration to set for this stream and put that
+			 * in the corresponding preset */
 
-		if (err == BT_ATT_ERR_ATTRIBUTE_NOT_FOUND) {
-			if (dir == BT_AUDIO_DIR_SINK) {
-				LOG_WRN("No sinks found");
-				server->snk.waiting_for_disc = false;
-			} else if (dir == BT_AUDIO_DIR_SOURCE) {
-				LOG_WRN("No sources found");
-				server->src.waiting_for_disc = false;
-			}
-		} else if (err) {
-			LOG_ERR("Discovery failed: %d", err);
-			srv_store_unlock();
-			return;
-		}
+			LOG_INF("Found %d valid PAC record(s), %d location(s), %d snk "
+				"ep(s) %d src ep(s)",
+				POPCOUNT(valid_sink_caps), POPCOUNT(server->snk.locations),
+				server->snk.num_eps, server->src.num_eps);
 
-		if (dir == BT_AUDIO_DIR_SINK && !err) {
-			uint32_t valid_sink_caps = 0;
+			if (POPCOUNT(server->snk.locations) == 1 &&
+			    POPCOUNT(valid_sink_caps) >= 1 && server->snk.num_eps >= 1) {
 
-			ret = srv_store_valid_codec_cap_check(conn, dir, &valid_sink_caps);
-			if (valid_sink_caps) {
-
-				/* Get the valid configuration to set for this stream and put that
-				 * in the corresponding preset */
-
-				LOG_INF("Found %d valid PAC record(s), %d location(s), %d snk "
-					"ep(s) %d src "
-					"ep(s)",
-					POPCOUNT(valid_sink_caps), POPCOUNT(server->snk.locations),
-					server->snk.num_eps, server->src.num_eps);
-
-				if (POPCOUNT(server->snk.locations) == 1 &&
-				    POPCOUNT(valid_sink_caps) >= 1 && server->snk.num_eps >= 1) {
-
-					ret = bt_audio_codec_cfg_set_val(
-						&server->snk.lc3_preset[0].codec_cfg,
-						BT_AUDIO_CODEC_CFG_CHAN_ALLOC,
-						(uint8_t *)&server->snk.locations,
-						sizeof(server->snk.locations));
-					if (ret < 0) {
-						LOG_ERR("Failed to set codec channel allocation: "
-							"%d",
-							ret);
-						srv_store_unlock();
-						return;
-					}
-
-				} else if (POPCOUNT(server->snk.locations) == 2 &&
-					   POPCOUNT(valid_sink_caps) >= 1 &&
-					   server->snk.num_eps >= 2) {
-
-					uint32_t left = BT_AUDIO_LOCATION_FRONT_LEFT;
-					uint32_t right = BT_AUDIO_LOCATION_FRONT_RIGHT;
-
-					LOG_INF("STEREO sink found, setting up stereo codec "
-						"capabilities");
-					ret = bt_audio_codec_cfg_set_val(
-						&server->snk.lc3_preset[0].codec_cfg,
-						BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&left,
-						sizeof(server->snk.locations));
-					if (ret < 0) {
-						LOG_ERR("Failed to set codec channel allocation: "
-							"%d",
-							ret);
-						srv_store_unlock();
-						return;
-					}
-
-					memcpy(&server->snk.lc3_preset[1],
-					       &server->snk.lc3_preset[0],
-					       sizeof(struct bt_bap_lc3_preset));
-
-					ret = bt_audio_codec_cfg_set_val(
-						&server->snk.lc3_preset[1].codec_cfg,
-						BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&right,
-						sizeof(server->snk.locations));
-					if (ret < 0) {
-						LOG_ERR("Failed to set codec channel allocation: "
-							"%d",
-							ret);
-						srv_store_unlock();
-						return;
-					}
-				} else {
-					LOG_WRN("Unsupported unicast server/headset configuration");
+				ret = bt_audio_codec_cfg_set_val(
+					&server->snk.lc3_preset[0].codec_cfg,
+					BT_AUDIO_CODEC_CFG_CHAN_ALLOC,
+					(uint8_t *)&server->snk.locations,
+					sizeof(server->snk.locations));
+				if (ret < 0) {
+					LOG_ERR("Failed to set codec channel allocation: %d", ret);
 					srv_store_unlock();
 					return;
 				}
 
-			} else {
-				/* NOTE: The string below is used by the Nordic CI system */
-				LOG_WRN("No valid codec capability found for %s sink",
-					server->name);
-			}
-		} else if (dir == BT_AUDIO_DIR_SOURCE && !err) {
-			uint32_t valid_source_caps = 0;
+			} else if (POPCOUNT(server->snk.locations) == 2 &&
+				   POPCOUNT(valid_sink_caps) >= 1 && server->snk.num_eps >= 2) {
 
-			ret = srv_store_valid_codec_cap_check(conn, dir, &valid_source_caps);
-			if (valid_source_caps) {
+				uint32_t left = BT_AUDIO_LOCATION_FRONT_LEFT;
+				uint32_t right = BT_AUDIO_LOCATION_FRONT_RIGHT;
+
+				LOG_INF("STEREO sink found, setting up stereo codec capabilities");
 				ret = bt_audio_codec_cfg_set_val(
-					&server->src.lc3_preset[0].codec_cfg,
-					BT_AUDIO_CODEC_CFG_CHAN_ALLOC,
-					(uint8_t *)&server->src.locations,
-					sizeof(server->src.locations));
+					&server->snk.lc3_preset[0].codec_cfg,
+					BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&left,
+					sizeof(server->snk.locations));
+				if (ret < 0) {
+					LOG_ERR("Failed to set codec channel allocation: %d", ret);
+					srv_store_unlock();
+					return;
+				}
+
+				memcpy(&server->snk.lc3_preset[1], &server->snk.lc3_preset[0],
+				       sizeof(struct bt_bap_lc3_preset));
+
+				ret = bt_audio_codec_cfg_set_val(
+					&server->snk.lc3_preset[1].codec_cfg,
+					BT_AUDIO_CODEC_CFG_CHAN_ALLOC, (uint8_t *)&right,
+					sizeof(server->snk.locations));
 				if (ret < 0) {
 					LOG_ERR("Failed to set codec channel allocation: %d", ret);
 					srv_store_unlock();
 					return;
 				}
 			} else {
-				LOG_WRN("No valid codec capability found for %s source",
-					server->name);
-			}
-		}
-
-		if (dir == BT_AUDIO_DIR_SINK) {
-			server->snk.waiting_for_disc = false;
-
-			if (server->src.waiting_for_disc) {
-				ret = bt_bap_unicast_client_discover(conn, BT_AUDIO_DIR_SOURCE);
-				if (ret) {
-					LOG_WRN("Failed to discover source: %d", ret);
-				}
+				LOG_WRN("Unsupported unicast server/headset configuration");
 				srv_store_unlock();
 				return;
 			}
-		} else if (dir == BT_AUDIO_DIR_SOURCE) {
-			server->src.waiting_for_disc = false;
+
+		} else {
+			/* NOTE: The string below is used by the Nordic CI system */
+			LOG_WRN("No valid codec capability found for %s sink", server->name);
 		}
+	} else if (dir == BT_AUDIO_DIR_SOURCE && !err) {
+		uint32_t valid_source_caps = 0;
 
-		if (!playing_state) {
-			/* Since we are not in a playing state we return before starting the new
-			 * streams
-			 */
-			srv_store_unlock();
-			return;
+		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_source_caps);
+		if (valid_source_caps) {
+			ret = bt_audio_codec_cfg_set_val(
+				&server->src.lc3_preset[0].codec_cfg, BT_AUDIO_CODEC_CFG_CHAN_ALLOC,
+				(uint8_t *)&server->src.locations, sizeof(server->src.locations));
+			if (ret < 0) {
+				LOG_ERR("Failed to set codec channel allocation: %d", ret);
+				srv_store_unlock();
+				return;
+			}
+		} else {
+			LOG_WRN("No valid codec capability found for %s source", server->name);
 		}
-
-		ret = k_msgq_put(&cap_start_q, &conn, K_NO_WAIT);
-		if (ret) {
-			LOG_ERR("Failed to put device_index on the queue: %d", ret);
-			srv_store_unlock();
-			return;
-		}
-
-		// /* If we have a valid stereo idx, put it on the queue */
-		// if (memcmp(&stereo_idx, &idx, sizeof(struct stream_index)) && stereo_idx.lvl3 !=
-		// 0) { 	ret = k_msgq_put(&cap_start_q, &stereo_idx, K_NO_WAIT); 	if
-		// (ret) { 		LOG_ERR("Failed to put stereo device_index on the queue: %d", ret);
-		// 		return;
-		// 	}
-		// }
-
-		srv_store_unlock();
-		k_work_submit(&cap_start_work);
 	}
+
+	if (dir == BT_AUDIO_DIR_SINK) {
+		server->snk.waiting_for_disc = false;
+
+		if (server->src.waiting_for_disc) {
+			ret = bt_bap_unicast_client_discover(conn, BT_AUDIO_DIR_SOURCE);
+			if (ret) {
+				LOG_WRN("Failed to discover source: %d", ret);
+			}
+
+			srv_store_unlock();
+			return;
+		}
+	} else if (dir == BT_AUDIO_DIR_SOURCE) {
+		server->src.waiting_for_disc = false;
+	} else {
+		LOG_ERR("%s: Unknown direction: %d", __func__, dir);
+		srv_store_unlock();
+		return;
+	}
+
+	if (!playing_state) {
+		/* Since we are not in a playing state we return before starting the new
+		 * streams
+		 */
+		srv_store_unlock();
+		return;
+	}
+
+	srv_store_unlock();
+	k_work_submit(&cap_start_work);
+}
 
 #if (CONFIG_BT_AUDIO_TX)
 static void stream_sent_cb(struct bt_bap_stream *stream)
@@ -739,22 +661,12 @@ static void stream_sent_cb(struct bt_bap_stream *stream)
 
 	ret = le_audio_ep_state_get(stream->ep, &state);
 	if (ret) {
+		LOG_ERR("Failed to get endpoint state: %d", ret);
 		return;
 	}
 
 	if (state == BT_BAP_EP_STATE_STREAMING) {
-
-		struct bt_iso_info info;
-		ret = bt_iso_chan_get_info(stream->iso, &info);
-		if (ret < 0) {
-			LOG_ERR("Failed to get ISO channel info: %d", ret);
-			return;
-		}
-
-		idx.lvl1 = info.unicast.cig_id;
-		idx.lvl2 = LVL2;
-		idx.lvl3 = info.unicast.cis_id;
-
+		stream_idx_get(stream, &idx);
 		ERR_CHK(bt_le_audio_tx_stream_sent(idx));
 	} else {
 		LOG_WRN("Not in streaming state: %d", state);
@@ -766,8 +678,8 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 				 const struct bt_bap_qos_cfg_pref *pref)
 {
 	int ret;
-	uint32_t new_pres_dly_us = 0;
 	enum bt_audio_dir dir;
+	uint32_t new_pres_dly_us = 0;
 
 	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
 	if (ret < 0) {
@@ -776,7 +688,13 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	}
 
 	struct server_store *server = NULL;
+
 	ret = srv_store_from_stream_get(stream, &server);
+	if (ret) {
+		LOG_ERR("Unknown stream, should not reach here");
+		srv_store_unlock();
+		return;
+	}
 
 	dir = le_audio_stream_dir_get(stream);
 	if (dir <= 0) {
@@ -797,6 +715,7 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 		srv_store_unlock();
 		return;
 	}
+
 	LOG_DBG("Configured Stream info: %s, %p, dir %d", server->name, (void *)stream, dir);
 
 	bool group_reconfigure_needed = false;
@@ -813,15 +732,18 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 		return;
 	}
 
-	if (le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED) &&
-	    new_pres_dly_us != stream->qos->pd) {
-		// check_and_update_pd_in_group(idx, new_pres_dly_us);
+	srv_store_unlock();
+
+	if (((new_pres_dly_us != stream->qos->pd) &&
+	     le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED)) ||
+	    group_reconfigure_needed) {
+		LOG_WRN("Presentation delay changed from %d us to %d us", stream->qos->pd,
+			new_pres_dly_us);
+		/* Should stop all running streams to update their presentation delay */
 		stream->qos->pd = new_pres_dly_us;
 	}
 
-	le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, stream->conn, dir);
-
-	srv_store_unlock();
+	le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, stream->conn, stream, dir);
 }
 
 static void stream_qos_set_cb(struct bt_bap_stream *stream)
@@ -836,7 +758,6 @@ static void stream_enabled_cb(struct bt_bap_stream *stream)
 
 static void stream_started_cb(struct bt_bap_stream *stream)
 {
-	int ret;
 	enum bt_audio_dir dir;
 
 	dir = le_audio_stream_dir_get(stream);
@@ -847,29 +768,14 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 
 	struct stream_index idx = {0};
 	if (IS_ENABLED(CONFIG_BT_AUDIO_TX)) {
-
-		const uint8_t *loc;
-
-		bt_audio_codec_cfg_get_val(stream->codec_cfg, BT_AUDIO_CODEC_CFG_CHAN_ALLOC, &loc);
-
-		struct bt_iso_info info;
-		ret = bt_iso_chan_get_info(stream->iso, &info);
-		if (ret < 0) {
-			LOG_ERR("Failed to get ISO channel info: %d", ret);
-			return;
-		}
-
-		idx.lvl1 = info.unicast.cig_id;
-		idx.lvl2 = LVL2;
-		idx.lvl3 = info.unicast.cis_id;
-
+		stream_idx_get(stream, &idx);
 		ERR_CHK(bt_le_audio_tx_stream_started(idx));
 	}
 
 	/* NOTE: The string below is used by the Nordic CI system */
 	LOG_INF("Stream %p started, idx: %d %d %d", (void *)stream, idx.lvl1, idx.lvl2, idx.lvl3);
 
-	le_audio_event_publish(LE_AUDIO_EVT_STREAMING, stream->conn, dir);
+	le_audio_event_publish(LE_AUDIO_EVT_STREAMING, stream->conn, stream, dir);
 }
 
 static void stream_metadata_updated_cb(struct bt_bap_stream *stream)
@@ -903,6 +809,8 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 		return;
 	}
 
+	srv_store_unlock();
+
 	enum bt_audio_dir dir = 0;
 
 	dir = le_audio_stream_dir_get(stream);
@@ -910,8 +818,7 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 		LOG_ERR("Failed to get dir of stream %p", (void *)stream);
 	}
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn, dir);
-	srv_store_unlock();
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, stream->conn, stream, dir);
 }
 
 static void stream_released_cb(struct bt_bap_stream *stream)
@@ -920,6 +827,7 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 
 	LOG_DBG("Audio Stream %p released", (void *)stream);
 
+	/* Check if unicast_group_recreate has been requested */
 	if (unicast_group_created == false) {
 		/* Check if all streams have been released, only delete group if they all are */
 		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream, _node) {
@@ -938,13 +846,7 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 		}
 
 		/* Create a new unicast group */
-		ret = k_msgq_put(&cap_start_q, NULL, K_NO_WAIT);
-		if (ret) {
-			LOG_ERR("Failed to put device_index on the queue: %d", ret);
-			return;
-		}
 		k_work_submit(&cap_start_work);
-		return;
 	}
 }
 
@@ -967,16 +869,8 @@ static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_rec
 	}
 
 	struct stream_index idx;
-	struct bt_iso_info iso_info;
-	ret = bt_iso_chan_get_info(stream->iso, &iso_info);
-	if (ret < 0) {
-		LOG_ERR("Failed to get ISO channel info: %d", ret);
-		return;
-	}
 
-	idx.lvl1 = iso_info.unicast.cig_id;
-	idx.lvl2 = LVL2;
-	idx.lvl3 = iso_info.unicast.cis_id;
+	stream_idx_get(stream, &idx);
 
 	receive_cb(audio_frame, &meta, idx.lvl3);
 }
@@ -1023,7 +917,7 @@ static void unicast_discovery_complete_cb(struct bt_conn *conn, int err,
 
 	ret = srv_store_from_conn_get(conn, &server);
 	if (ret) {
-		LOG_ERR("Unknown connection, should not reach here");
+		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
 		srv_store_unlock();
 		return;
 	}
@@ -1054,7 +948,6 @@ static void unicast_discovery_complete_cb(struct bt_conn *conn, int err,
 
 static void unicast_start_complete_cb(int err, struct bt_conn *conn)
 {
-	int ret;
 
 	k_sem_give(&sem_cap_procedure_proceed);
 
@@ -1062,15 +955,7 @@ static void unicast_start_complete_cb(int err, struct bt_conn *conn)
 		LOG_WRN("Failed start_complete for conn: %p, err: %d", (void *)conn, err);
 	}
 
-	struct bt_conn *peek_conn = NULL;
 	LOG_DBG("Unicast start complete cb");
-	ret = k_msgq_peek(&cap_start_q, &peek_conn);
-	if (ret == 0) {
-		/* Pending start procedure found, call k_work */
-		k_work_submit(&cap_start_work);
-	} else {
-		LOG_DBG("No outstanding work");
-	}
 }
 
 static void unicast_update_complete_cb(int err, struct bt_conn *conn)
@@ -1084,8 +969,6 @@ static void unicast_update_complete_cb(int err, struct bt_conn *conn)
 
 static void unicast_stop_complete_cb(int err, struct bt_conn *conn)
 {
-	// int ret;
-
 	if (err) {
 		LOG_WRN("Failed stop_complete for conn: %p, err: %d", (void *)conn, err);
 	}
@@ -1107,14 +990,13 @@ int le_audio_concurrent_sync_num_get(void)
 	return 1; /* Only one stream supported at the moment */
 }
 
-int unicast_client_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint32_t *bitrate,
+int unicast_client_config_get(struct bt_bap_stream *stream, uint32_t *bitrate,
 			      uint32_t *sampling_rate_hz)
 {
 	int ret;
-	// struct stream_index idx;
 
-	if (conn == NULL) {
-		LOG_ERR("No valid connection pointer received");
+	if (stream == NULL) {
+		LOG_ERR("No valid stream pointer received");
 		return -EINVAL;
 	}
 
@@ -1123,75 +1005,27 @@ int unicast_client_config_get(struct bt_conn *conn, enum bt_audio_dir dir, uint3
 		return -ENXIO;
 	}
 
-	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
-	if (ret < 0) {
-		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
-		return ret;
+	if (stream->codec_cfg == NULL) {
+		LOG_ERR("No codec found for the stream");
+		return -ENXIO;
 	}
 
-	struct server_store *server = NULL;
-	ret = srv_store_from_conn_get(conn, &server);
-	if (ret) {
-		LOG_ERR("Unknown connection, should not reach here");
-		srv_store_unlock();
-		return ret;
-	}
-
-	if (dir == BT_AUDIO_DIR_SINK) {
-		if (server->snk.cap_streams[0].bap_stream.codec_cfg == NULL) {
-			LOG_ERR("No codec found for the stream");
-			srv_store_unlock();
+	if (sampling_rate_hz != NULL) {
+		ret = le_audio_freq_hz_get(stream->codec_cfg, sampling_rate_hz);
+		if (ret) {
+			LOG_ERR("Invalid sampling frequency: %d", ret);
 			return -ENXIO;
 		}
+	}
 
-		if (sampling_rate_hz != NULL) {
-			ret = le_audio_freq_hz_get(server->snk.cap_streams[0].bap_stream.codec_cfg,
-						   sampling_rate_hz);
-			if (ret) {
-				LOG_ERR("Invalid sampling frequency: %d", ret);
-				srv_store_unlock();
-				return -ENXIO;
-			}
-		}
-
-		if (bitrate != NULL) {
-			ret = le_audio_bitrate_get(server->snk.cap_streams[0].bap_stream.codec_cfg,
-						   bitrate);
-			if (ret) {
-				LOG_ERR("Unable to calculate bitrate: %d", ret);
-				srv_store_unlock();
-				return -ENXIO;
-			}
-		}
-	} else if (dir == BT_AUDIO_DIR_SOURCE) {
-		if (server->src.cap_streams[0].bap_stream.codec_cfg == NULL) {
-			LOG_ERR("No codec found for the stream");
-			srv_store_unlock();
+	if (bitrate != NULL) {
+		ret = le_audio_bitrate_get(stream->codec_cfg, bitrate);
+		if (ret) {
+			LOG_ERR("Unable to calculate bitrate: %d", ret);
 			return -ENXIO;
-		}
-
-		if (sampling_rate_hz != NULL) {
-			ret = le_audio_freq_hz_get(server->src.cap_streams[0].bap_stream.codec_cfg,
-						   sampling_rate_hz);
-			if (ret) {
-				LOG_ERR("Invalid sampling frequency: %d", ret);
-				srv_store_unlock();
-				return -ENXIO;
-			}
-		}
-
-		if (bitrate != NULL) {
-			ret = le_audio_bitrate_get(server->src.cap_streams[0].bap_stream.codec_cfg,
-						   bitrate);
-			if (ret) {
-				LOG_ERR("Unable to calculate bitrate: %d", ret);
-				srv_store_unlock();
-				return -ENXIO;
-			}
 		}
 	}
 
-	srv_store_unlock();
 	return 0;
 }
 
@@ -1217,11 +1051,13 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 		LOG_INF("Server store already exists for conn: %p", (void *)conn);
 		ret = srv_store_from_conn_get(conn, &server);
 		if (ret) {
-			LOG_ERR("Unknown connection, should not reach here");
+			LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+			;
 			srv_store_unlock();
 			return ret;
 		}
 
+		/* Reset the server store before discovery */
 		server->snk.num_eps = 0;
 		server->src.num_eps = 0;
 		memset(&server->snk.lc3_preset, 0, sizeof(server->snk.lc3_preset));
@@ -1240,10 +1076,10 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 		srv_store_unlock();
 		return ret;
 	} else {
-
 		ret = srv_store_from_conn_get(conn, &server);
 		if (ret) {
-			LOG_ERR("Unknown connection, should not reach here");
+			LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+			;
 			srv_store_unlock();
 			return ret;
 		}
@@ -1299,11 +1135,7 @@ int unicast_client_start(uint8_t cig_index)
 	ret = k_sem_take(&sem_cap_procedure_proceed, CAP_PROCED_SEM_WAIT_TIME_MS);
 	if (ret == -EAGAIN) {
 		LOG_WRN("CAP procedure lock timeout, putting start on queue");
-		ret = k_msgq_put(&cap_start_q, NULL, K_NO_WAIT);
-		if (ret) {
-			LOG_ERR("Failed to put start procedure on the queue: %d", ret);
-			return ret;
-		}
+		k_work_submit(&cap_start_work);
 		return 0;
 	}
 
@@ -1353,8 +1185,7 @@ int unicast_client_start(uint8_t cig_index)
 			for (int j = 0; j < server->snk.num_eps; j++) {
 				ret = le_audio_ep_state_get(server->snk.eps[j], &state);
 				if (state == BT_BAP_EP_STATE_STREAMING) {
-					LOG_DBG("Sink endpoint is already streaming, "
-						"skipping "
+					LOG_DBG("Sink endpoint is already streaming, skipping "
 						"start");
 					continue;
 				}
@@ -1372,8 +1203,7 @@ int unicast_client_start(uint8_t cig_index)
 			for (int j = 0; j < server->src.num_eps; j++) {
 				ret = le_audio_ep_state_get(server->src.eps[j], &state);
 				if (state == BT_BAP_EP_STATE_STREAMING) {
-					LOG_DBG("Source endpoint is already streaming, "
-						"skipping "
+					LOG_DBG("Source endpoint is already streaming, skipping "
 						"start");
 					continue;
 				}
@@ -1382,7 +1212,7 @@ int unicast_client_start(uint8_t cig_index)
 				cap_stream_params[param.count].stream = &server->src.cap_streams[j];
 				cap_stream_params[param.count].ep = server->src.eps[j];
 				cap_stream_params[param.count].codec_cfg =
-					&server->src.lc3_preset[0].codec_cfg;
+					&server->src.lc3_preset[j].codec_cfg;
 				param.count++;
 			}
 		}
@@ -1398,10 +1228,7 @@ int unicast_client_start(uint8_t cig_index)
 	ret = bt_cap_initiator_unicast_audio_start(&param);
 	if (ret == -EBUSY) {
 		/* Try again once the ongoing start procedure is completed */
-		ret = k_msgq_put(&cap_start_q, NULL, K_NO_WAIT);
-		if (ret) {
-			LOG_ERR("Failed to put device_index on the queue: %d", ret);
-		}
+		k_work_submit(&cap_start_work);
 	} else if (ret) {
 		LOG_ERR("Failed to start unicast sink audio: %d", ret);
 	}
@@ -1433,7 +1260,7 @@ int unicast_client_stop(uint8_t cig_index)
 	param.type = BT_CAP_SET_TYPE_AD_HOC;
 	param.release = true;
 
-	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, NULL, 0);
+	le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING, NULL, NULL, 0);
 
 	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
 	if (ret < 0) {
@@ -1449,6 +1276,10 @@ int unicast_client_stop(uint8_t cig_index)
 		struct server_store *server = NULL;
 
 		ret = srv_store_server_get(&server, i);
+		if (ret) {
+			LOG_ERR("Failed to get server store for index %d: %d", i, ret);
+			continue;
+		}
 
 		if (server->snk.num_eps > 0) {
 			for (int j = 0; j < server->snk.num_eps; j++) {
@@ -1515,14 +1346,19 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 
 	uint8_t num_streaming =
 		srv_store_all_ep_state_count(BT_BAP_EP_STATE_STREAMING, BT_AUDIO_DIR_SINK);
-
 	struct le_audio_tx_info tx[num_streaming];
 
 	for (int i = 0; i < srv_store_num_get(); i++) {
-		/* Skip unicast_servers not in a streaming state */
 		struct server_store *server = NULL;
+
 		ret = srv_store_server_get(&server, i);
+		if (ret) {
+			LOG_ERR("Failed to get server store for index %d: %d", i, ret);
+			continue;
+		}
+
 		for (int j = 0; j < server->snk.num_eps; j++) {
+			/* Skip unicast_servers not in a streaming state */
 			if (!le_audio_ep_state_check(server->snk.cap_streams[j].bap_stream.ep,
 						     BT_BAP_EP_STATE_STREAMING)) {
 				continue;
@@ -1532,18 +1368,8 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 			tx[num_active_streams].cap_stream = &server->snk.cap_streams[j];
 
 			/* Set index */
-			struct bt_iso_info info;
-			ret = bt_iso_chan_get_info(server->snk.cap_streams[j].bap_stream.iso,
-						   &info);
-			if (ret < 0) {
-				LOG_ERR("Failed to get ISO channel info: %d", ret);
-				srv_store_unlock();
-				return ret;
-			}
-
-			tx[num_active_streams].idx.lvl1 = info.unicast.cig_id;
-			tx[num_active_streams].idx.lvl2 = LVL2;
-			tx[num_active_streams].idx.lvl3 = info.unicast.cis_id;
+			stream_idx_get(&server->snk.cap_streams[j].bap_stream,
+				       &tx[num_active_streams].idx);
 
 			const uint8_t *loc;
 
@@ -1571,10 +1397,9 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 		srv_store_unlock();
 		return ret;
 	}
-#endif /* (CONFIG_BT_AUDIO_TX) */
 
 	srv_store_unlock();
-
+#endif /* (CONFIG_BT_AUDIO_TX) */
 	return 0;
 }
 

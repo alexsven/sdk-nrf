@@ -308,7 +308,7 @@ static void le_audio_msg_sub_thread(void)
 
 			LOG_DBG("LE audio config received");
 
-			ret = unicast_client_config_get(msg.conn, msg.dir, &bitrate_bps,
+			ret = unicast_client_config_get(msg.stream, &bitrate_bps,
 							&sampling_rate_hz);
 			if (ret) {
 				LOG_WRN("Failed to get config: %d", ret);
