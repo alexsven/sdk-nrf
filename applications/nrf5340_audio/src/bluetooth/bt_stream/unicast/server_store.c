@@ -39,6 +39,9 @@ static void valid_entry_check(char const *const str)
 	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "%s: Thread mismatch", str);
 }
 
+/* Any address stored here will be there if the server is connected, or
+ *if the device is disconnected but bonded
+ **/
 static struct server_store servers[CONFIG_BT_MAX_CONN];
 
 static int server_add(struct server_store *server)
@@ -53,9 +56,39 @@ static int server_add(struct server_store *server)
 	return -ENOMEM;
 }
 
+static int server_remove(struct server_store *server)
+{
+	if (server == NULL) {
+		LOG_ERR("Server is NULL");
+		return -ENODEV;
+	}
+
+	memset(server, 0, sizeof(struct server_store));
+	return 0;
+}
+
+int server_remove_by_addr(uint8_t id, const bt_addr_le_t *peer)
+{
+	__ASSERT(id == BT_ID_DEFAULT, "Only default ID is supported");
+	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		if (bt_addr_le_eq(&servers[i].addr, peer)) {
+			return server_remove(&servers[i]);
+		}
+	}
+
+	LOG_ERR("Server not found");
+	return -ENOENT;
+}
+
 static int server_remove_by_conn(struct bt_conn const *const conn)
 {
 	struct server_store *server = NULL;
+	const bt_addr_le_t *peer_addr = bt_conn_get_dst(conn);
+
+	if (bt_le_bond_exists(BT_ID_DEFAULT, peer_addr)) {
+		/* If the peer is bonded, we can use the stored information */
+		LOG_DBG("Peer is bonded");
+	}
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
 		if (servers[i].conn == conn) {
@@ -65,6 +98,7 @@ static int server_remove_by_conn(struct bt_conn const *const conn)
 	}
 
 	if (server == NULL) {
+		LOG_ERR("Server does not exist");
 		return -ENOENT;
 	}
 
@@ -355,16 +389,6 @@ static bool caps_print_cb(struct bt_data *data, void *user_data)
 	return true;
 }
 
-static void srv_store_clear_vars(struct server_store *server)
-{
-	if (server == NULL) {
-		LOG_ERR("Server is NULL");
-		return;
-	}
-
-	memset(server, 0, sizeof(struct server_store));
-}
-
 /* Check to see if the existing stream can be ignored when we try to find a valid presentation delay
  * when a new stream is added.
  */
@@ -401,7 +425,7 @@ static int srv_store_from_conn_get_internal(struct bt_conn const *const conn,
 					    struct server_store **server)
 {
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
-		if (servers[i].conn == conn) {
+		if (bt_addr_le_eq(&servers[i].addr, bt_conn_get_dst(conn))) {
 			*server = &servers[i];
 			return 0;
 		}
@@ -967,6 +991,9 @@ int srv_store_add(struct bt_conn *conn)
 	int ret;
 	struct server_store *temp_server = NULL;
 
+	const bt_addr_le_t *peer_addr = bt_conn_get_dst(conn);
+	/*TODO: Check. If the address is random, we delete when the connection is removed */
+
 	/* Check if server already exists */
 	ret = srv_store_from_conn_get(conn, &temp_server);
 	if (ret == 0) {
@@ -977,14 +1004,18 @@ int srv_store_add(struct bt_conn *conn)
 
 	struct server_store server;
 
-	srv_store_clear_vars(&server);
+	ret = server_remove(&server);
+	if (ret) {
+		return ret;
+	}
 
 	server.conn = conn;
+	bt_addr_le_copy(&server.addr, peer_addr);
 
 	return server_add(&server);
 }
 
-int _srv_store_remove(struct bt_conn const *const conn)
+int srv_store_remove(struct bt_conn const *const conn)
 {
 	valid_entry_check(__func__);
 
@@ -994,9 +1025,14 @@ int _srv_store_remove(struct bt_conn const *const conn)
 static int srv_store_remove_all_internal(void)
 {
 	valid_entry_check(__func__);
+	int ret;
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
-		srv_store_clear_vars(&servers[i]);
+		ret = server_remove(&servers[i]);
+		if (ret) {
+			LOG_ERR("Failed to remove server at index %d, error: %d", i, ret);
+			return ret;
+		}
 	}
 	return 0;
 }

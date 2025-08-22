@@ -198,6 +198,17 @@ static struct bt_conn_cb conn_callbacks = {
 #endif /* defined(CONFIG_BT_SMP) */
 };
 
+void bond_deleted_cb(uint8_t id, const bt_addr_le_t *peer)
+{
+	char str[BT_ADDR_LE_STR_LEN];
+	(void)bt_addr_le_to_str(peer, str, BT_ADDR_LE_STR_LEN);
+	LOG_WRN("Bond deleted: id %d, peer %s. MUST REMOVE ENTRY FROM SERVER STORE", id, str);
+}
+
+static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
+	.bond_deleted = bond_deleted_cb,
+};
+
 static void bt_enabled_cb(int err)
 {
 	if (err) {
@@ -411,6 +422,11 @@ int bt_mgmt_init(void)
 
 	if (IS_ENABLED(CONFIG_BT_CONN)) {
 		bt_conn_cb_register(&conn_callbacks);
+		ret = bt_conn_auth_info_cb_register(&conn_auth_info_callbacks);
+		if (ret) {
+			LOG_ERR("Failed to register conn auth info callbacks: %d", ret);
+			return ret;
+		}
 	}
 
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL) || IS_ENABLED(CONFIG_BT_BROADCASTER)) {

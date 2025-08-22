@@ -8,22 +8,34 @@
 #include <zephyr/ztest_error_hook.h>
 #include <zephyr/tc_util.h>
 
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/audio/audio.h>
+#include <zephyr/bluetooth/audio/bap.h>
 #include <../subsys/bluetooth/audio/bap_endpoint.h>
 #include <../subsys/bluetooth/audio/bap_iso.h>
+#include <../subsys/bluetooth/host/conn_internal.h>
 #include "server_store.h"
 
 #define TEST_CAP_STREAM(name)                                                                      \
 	struct bt_cap_stream test_##name##_cap_stream;                                             \
 	struct bt_bap_ep test_##name##_ep_var = {0};                                               \
-	struct bt_bap_iso test_##name##_bap_iso = {0};                                             \
+	struct bt_iso_chan test_##name##_bap_iso = {0};                                            \
 	struct bt_bap_qos_cfg test_##name##_qos = {0};                                             \
 	test_##name##_qos.pd = UINT32_MAX;                                                         \
 	test_##name##_ep_var.dir = 1;                                                              \
 	test_##name##_cap_stream.bap_stream.ep = &test_##name##_ep_var;                            \
-	test_##name##_cap_stream.bap_stream.bap_iso = &test_##name##_bap_iso;                      \
+	test_##name##_cap_stream.bap_stream.iso = &test_##name##_bap_iso;                          \
 	test_##name##_cap_stream.bap_stream.group = (void *)0;                                     \
 	test_##name##_cap_stream.bap_stream.qos = &test_##name##_qos;
+
+#define TEST_CONN(val)                                                                             \
+	struct bt_conn test_##val##_conn = {                                                       \
+		.handle = val,                                                                     \
+		.type = BT_CONN_TYPE_LE,                                                           \
+		.id = val,                                                                         \
+		.state = BT_CONN_STATE_CONNECTED,                                                  \
+		.le = {.dst = {.type = BT_ADDR_LE_PUBLIC, .a = {{val, 0, 0, 0, 0, 0}}}}};
 
 ZTEST(suite_server_store, test_srv_store_init)
 {
@@ -35,9 +47,9 @@ ZTEST(suite_server_store, test_srv_store_init)
 	ret = srv_store_num_get();
 	zassert_equal(ret, 0, "Number of servers should be zero after init");
 
-	uint32_t conn = 0x12345678;
+	TEST_CONN(1);
 
-	ret = srv_store_add((struct bt_conn *)conn);
+	ret = srv_store_add(&test_1_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	ret = srv_store_num_get();
@@ -59,18 +71,18 @@ ZTEST(suite_server_store, test_srv_store_multiple)
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	uint32_t conn1 = 0x1000;
-	uint32_t conn2 = 0x2000;
-	uint32_t conn3 = 0x3000;
-	uint32_t conn4 = 0x4000;
+	TEST_CONN(101);
+	TEST_CONN(102);
+	TEST_CONN(103);
+	TEST_CONN(104);
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn2);
+	ret = srv_store_add(&test_102_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn3);
+	ret = srv_store_add(&test_103_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	ret = srv_store_num_get();
@@ -78,13 +90,13 @@ ZTEST(suite_server_store, test_srv_store_multiple)
 
 	struct server_store *retr_server = NULL;
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server);
+	ret = srv_store_from_conn_get(&test_102_conn, &retr_server);
 	zassert_equal(ret, 0, "Retrieving server by connection did not return zero");
 	zassert_not_null(retr_server, "Retrieved server should not be NULL");
-	zassert_equal(retr_server->conn, (struct bt_conn *)conn2,
+	zassert_equal(retr_server->conn, &test_102_conn,
 		      "Retrieved server connection does not match expected");
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn4, &retr_server);
+	ret = srv_store_from_conn_get(&test_104_conn, &retr_server);
 	zassert_equal(ret, -ENOENT, "Retrieving non-existing server should return -ENOENT");
 	zassert_is_null(retr_server, "Retrieved server should be NULL for non-existing entry");
 
@@ -100,60 +112,60 @@ ZTEST(suite_server_store, test_srv_store_pointer_check)
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	uint32_t conn1 = 0x1000;
-	uint32_t conn2 = 0x2000;
-	uint32_t conn3 = 0x3000;
+	TEST_CONN(101);
+	TEST_CONN(102);
+	TEST_CONN(103);
 
 	struct server_store *retr_server1 = NULL;
 	struct server_store *retr_server2 = NULL;
 	struct server_store *retr_server3 = NULL;
 
-	ret = srv_store_add((struct bt_conn *)conn2);
+	ret = srv_store_add(&test_102_conn);
 	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
+	ret = srv_store_from_conn_get(&test_102_conn, &retr_server2);
 	zassert_equal(ret, 0);
 	retr_server2->snk.num_codec_caps = 2;
 	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server2->snk.num_codec_caps,
 		 &retr_server2->snk.num_codec_caps, retr_server2);
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
+	ret = srv_store_from_conn_get(&test_102_conn, &retr_server2);
 	zassert_equal(ret, 0);
 	TC_PRINT("value %d fetched at %p (%p)\n", retr_server2->snk.num_codec_caps,
 		 &retr_server2->snk.num_codec_caps, retr_server2);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
+	ret = srv_store_from_conn_get(&test_101_conn, &retr_server1);
 	zassert_equal(ret, 0);
 	retr_server1->snk.num_codec_caps = 1;
 	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server1->snk.num_codec_caps,
 		 &retr_server1->snk.num_codec_caps, retr_server1);
 
-	ret = srv_store_add((struct bt_conn *)conn3);
+	ret = srv_store_add(&test_103_conn);
 	zassert_equal(ret, 0);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	ret = srv_store_from_conn_get(&test_103_conn, &retr_server3);
 	zassert_equal(ret, 0);
 	retr_server3->snk.num_codec_caps = 3;
 	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server3->snk.num_codec_caps,
 		 &retr_server3->snk.num_codec_caps, retr_server3);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
+	ret = srv_store_from_conn_get(&test_101_conn, &retr_server1);
 	zassert_equal(ret, 0);
 	TC_PRINT("value %d fetched at %p (%p)\n", retr_server1->snk.num_codec_caps,
 		 &retr_server1->snk.num_codec_caps, retr_server1);
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	ret = srv_store_from_conn_get(&test_103_conn, &retr_server3);
 	zassert_equal(ret, 0);
 	TC_PRINT("value %d stored_ at %p (%p)\n", retr_server3->snk.num_codec_caps,
 		 &retr_server3->snk.num_codec_caps, retr_server3);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server1);
+	ret = srv_store_from_conn_get(&test_101_conn, &retr_server1);
 	TC_PRINT("value %d fetched at %p (%p)\n", retr_server1->snk.num_codec_caps,
 		 &retr_server1->snk.num_codec_caps, retr_server1);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn2, &retr_server2);
+	ret = srv_store_from_conn_get(&test_102_conn, &retr_server2);
 	TC_PRINT("value %d fetched at %p (%p)\n", retr_server2->snk.num_codec_caps,
 		 &retr_server2->snk.num_codec_caps, retr_server2);
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn3, &retr_server3);
+	ret = srv_store_from_conn_get(&test_103_conn, &retr_server3);
 	TC_PRINT("value %d fetched at %p (%p)\n", retr_server3->snk.num_codec_caps,
 		 &retr_server3->snk.num_codec_caps, retr_server3);
 
@@ -167,23 +179,23 @@ ZTEST(suite_server_store, test_srv_remove)
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	uint32_t conn1 = 0x1000;
-	uint32_t conn2 = 0x2000;
-	uint32_t conn3 = 0x3000;
+	TEST_CONN(100);
+	TEST_CONN(101);
+	TEST_CONN(102);
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_100_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn2);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn3);
+	ret = srv_store_add(&test_102_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	ret = srv_store_num_get();
 	zassert_equal(ret, 3, "Number of servers should be three after adding three servers");
 
-	ret = _srv_store_remove((struct bt_conn *)conn2);
+	ret = srv_store_remove(&test_102_conn);
 	zassert_equal(ret, 0, "Removing server by connection did not return zero");
 
 	ret = srv_store_num_get();
@@ -199,21 +211,21 @@ ZTEST(suite_server_store, test_find_srv_from_stream)
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	uint32_t conn0 = 0x1000;
-	uint32_t conn1 = 0x2000;
+	TEST_CONN(100);
+	TEST_CONN(101);
 
-	ret = srv_store_add((struct bt_conn *)conn0);
+	ret = srv_store_add(&test_100_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	struct server_store *retr_server = NULL;
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn0, &retr_server);
+	ret = srv_store_from_conn_get(&test_100_conn, &retr_server);
 	zassert_equal(ret, 0, "Retrieving OK server by connection did not return zero");
 
-	retr_server->name = "Test Server 0";
+	retr_server->name = "Test Server 100";
 	TEST_CAP_STREAM(one);
 	memcpy(&retr_server->snk.cap_streams[0], &test_one_cap_stream, sizeof(test_one_cap_stream));
 	TEST_CAP_STREAM(two);
@@ -222,10 +234,10 @@ ZTEST(suite_server_store, test_find_srv_from_stream)
 	memcpy(&retr_server->snk.cap_streams[2], &test_three_cap_stream,
 	       sizeof(test_three_cap_stream));
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn1, &retr_server);
+	ret = srv_store_from_conn_get(&test_101_conn, &retr_server);
 	zassert_equal(ret, 0, "Retrieving OK server by connection did not return zero");
 
-	retr_server->name = "Test Server 1";
+	retr_server->name = "Test Server 101";
 	TEST_CAP_STREAM(four);
 	memcpy(&retr_server->snk.cap_streams[0], &test_four_cap_stream,
 	       sizeof(test_four_cap_stream));
@@ -246,8 +258,8 @@ ZTEST(suite_server_store, test_find_srv_from_stream)
 	ret = srv_store_from_stream_get(&test_five_cap_stream.bap_stream, &retr_server);
 	zassert_equal(ret, 0, "Retrieving from stream should return zero %d", ret);
 	zassert_not_null(retr_server, "Retrieved server should not be NULL");
-	zassert_equal(retr_server->name, "Test Server 1");
-	zassert_equal_ptr(retr_server->conn, conn1,
+	zassert_equal(retr_server->name, "Test Server 101");
+	zassert_equal_ptr(retr_server->conn, &test_101_conn,
 			  "Retrieved server connection does not match expected");
 	/* Testing illegal operation with idential cap_stream pointers */
 
@@ -311,20 +323,20 @@ ZTEST(suite_server_store, test_pres_delay_advanced)
 {
 	int ret;
 
-	uint32_t conn0 = 0x4000;
+	TEST_CONN(100);
 
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn0);
+	ret = srv_store_add(&test_100_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	struct server_store *retr_server = NULL;
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn0, &retr_server);
+	ret = srv_store_from_conn_get(&test_100_conn, &retr_server);
 	zassert_equal(ret, 0, "Retrieving server by connection did not return zero");
 	zassert_not_null(retr_server, "Retrieved server should not be NULL");
-	zassert_equal(retr_server->conn, (struct bt_conn *)conn0,
+	zassert_equal(retr_server->conn, &test_100_conn,
 		      "Retrieved server connection does not match expected");
 
 	TEST_CAP_STREAM(one);
@@ -381,24 +393,24 @@ ZTEST(suite_server_store, test_pres_delay_multi_group)
 {
 	int ret;
 
-	uint32_t conn0 = 0x4000;
-	uint32_t conn1 = 0x4001;
+	TEST_CONN(100);
+	TEST_CONN(101);
 
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn0);
+	ret = srv_store_add(&test_100_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	struct server_store *retr_server = NULL;
 
-	ret = srv_store_from_conn_get((struct bt_conn *)conn0, &retr_server);
+	ret = srv_store_from_conn_get(&test_100_conn, &retr_server);
 	zassert_equal(ret, 0, "Retrieving server by connection did not return zero");
 	zassert_not_null(retr_server, "Retrieved server should not be NULL");
-	zassert_equal(retr_server->conn, (struct bt_conn *)conn0,
+	zassert_equal(retr_server->conn, &test_100_conn,
 		      "Retrieved server connection does not match expected");
 
 	TEST_CAP_STREAM(one);
@@ -437,12 +449,12 @@ ZTEST(suite_server_store, test_cap_set)
 {
 	int ret;
 
-	uint32_t conn0 = 0x4000;
+	TEST_CONN(1);
 
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn0);
+	ret = srv_store_add(&test_1_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	struct bt_audio_codec_cap codec;
@@ -450,7 +462,7 @@ ZTEST(suite_server_store, test_cap_set)
 	codec.id = 0xaa;
 	codec.data_len = 10;
 
-	ret = srv_store_codec_cap_set((struct bt_conn *)conn0, BT_AUDIO_DIR_SINK, &codec);
+	ret = srv_store_codec_cap_set(&test_1_conn, BT_AUDIO_DIR_SINK, &codec);
 	zassert_equal(ret, 0, "Setting codec capabilities did not return zero %d", ret);
 
 	srv_store_unlock();
@@ -460,13 +472,13 @@ ZTEST(suite_server_store, test_srv_get)
 {
 	int ret;
 
-	uint32_t conn0 = 0x1000;
-	uint32_t conn1 = 0x1001;
+	TEST_CONN(100);
+	TEST_CONN(101);
 
-	ret = srv_store_add((struct bt_conn *)conn0);
+	ret = srv_store_add(&test_100_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_add((struct bt_conn *)conn1);
+	ret = srv_store_add(&test_101_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
 	struct server_store *server;
@@ -474,14 +486,14 @@ ZTEST(suite_server_store, test_srv_get)
 	ret = srv_store_server_get(&server, 0);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 	zassert_not_null(server, "Retrieved server should not be NULL");
-	zassert_equal(server->conn, (struct bt_conn *)conn0,
-		      "Retrieved server connection does not match expected");
+	zassert_equal_ptr(server->conn, &test_100_conn,
+			  "Retrieved server connection does not match expected");
 
 	ret = srv_store_server_get(&server, 1);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 	zassert_not_null(server, "Retrieved server should not be NULL");
-	zassert_equal(server->conn, (struct bt_conn *)conn1,
-		      "Retrieved server connection does not match expected");
+	zassert_equal_ptr(server->conn, &test_101_conn,
+			  "Retrieved server connection does not match expected");
 
 	ret = srv_store_server_get(&server, 2);
 	zassert_equal(ret, -ENOENT, "Adding server did not return zero %d", ret);
