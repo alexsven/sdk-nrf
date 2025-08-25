@@ -374,6 +374,32 @@ static void le_audio_msg_sub_thread(void)
 	}
 }
 
+#define ADDR_RESOLVED_BITMASK (0x02)
+static bool bt_addr_le_is_resolved(const bt_addr_le_t *addr)
+{
+	return (addr->type & ADDR_RESOLVED_BITMASK) != 0;
+}
+
+static void discovery_process_start(struct bt_conn *conn)
+{
+	int ret;
+
+	ret = bt_r_and_c_discover(conn);
+	if (ret) {
+		LOG_WRN("Failed to discover rendering services");
+	}
+
+	if (IS_ENABLED(CONFIG_STREAM_BIDIRECTIONAL)) {
+		ret = unicast_client_discover(conn, UNICAST_SERVER_BIDIR);
+	} else {
+		ret = unicast_client_discover(conn, UNICAST_SERVER_SINK);
+	}
+
+	if (ret) {
+		LOG_ERR("Failed to handle unicast client discover: %d", ret);
+	}
+}
+
 /**
  * @brief	Zbus listener to receive events from bt_mgmt.
  *
@@ -384,7 +410,6 @@ static void le_audio_msg_sub_thread(void)
  */
 static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 {
-	int ret;
 	const struct bt_mgmt_msg *msg;
 	uint8_t num_conn = 0;
 
@@ -400,22 +425,22 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 	case BT_MGMT_SECURITY_CHANGED:
 		LOG_INF("Security changed");
-
-		ret = bt_r_and_c_discover(msg->conn);
-		if (ret) {
-			LOG_WRN("Failed to discover rendering services");
+		if (BT_ADDR_IS_NRPA(&msg->rpa.a)) {
+			ERR_CHK_MSG(-EINVAL, "Non-resolvable private not supported by application");
 		}
 
-		if (IS_ENABLED(CONFIG_STREAM_BIDIRECTIONAL)) {
-			ret = unicast_client_discover(msg->conn, UNICAST_SERVER_BIDIR);
-		} else {
-			ret = unicast_client_discover(msg->conn, UNICAST_SERVER_SINK);
+		if (bt_addr_le_is_rpa(&msg->rpa) && !bt_addr_le_is_resolved(&msg->rpa)) {
+			/* If this is the case, we wait for ID resolution.*/
+			LOG_DBG("Waiting for address to be resolved");
+			return;
 		}
 
-		if (ret) {
-			LOG_ERR("Failed to handle unicast client discover: %d", ret);
-		}
+		discovery_process_start(msg->conn);
 
+		break;
+	case BT_MGMT_IDENTITY_RESOLVED:
+		LOG_INF("Identity resolved");
+		discovery_process_start(msg->conn);
 		break;
 
 	case BT_MGMT_DISCONNECTED:

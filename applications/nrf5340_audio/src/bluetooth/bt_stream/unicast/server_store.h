@@ -18,11 +18,11 @@ struct unicast_server_snk_vars {
 	bool waiting_for_disc;
 	/* PACS response. Location should be a superset of all codec locations. Bitfield */
 	uint32_t locations;
-	/* This value will propagate to the streams. */
+	/* lc3_preset will propagate to the streams. */
 	struct bt_bap_lc3_preset lc3_preset[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
 	struct bt_audio_codec_cap codec_caps[CONFIG_CODEC_CAP_COUNT_MAX];
 	size_t num_codec_caps;
-	/* One array for discovering the eps. Do not use this for operations */
+	/* One array for discovering the eps */
 	struct bt_bap_ep *eps[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
 	size_t num_eps;
 	enum bt_audio_context supported_ctx;
@@ -45,25 +45,23 @@ struct unicast_server_src_vars {
 	struct bt_cap_stream cap_streams[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT];
 };
 
-/* This struct holds the actual values of codec configs and QoS across all CIGs */
+/* This struct holds the parameters for a given peer server/headset device
+ **/
 struct server_store {
 	char *name;
 	bt_addr_le_t addr;
 	struct bt_conn *conn;
 	const struct bt_csip_set_coordinator_set_member *member;
-
 	struct unicast_server_snk_vars snk;
 	struct unicast_server_src_vars src;
 };
 
-int srv_store_src_num_get(uint8_t cig_id);
-
-int srv_store_snk_num_get(uint8_t cig_id);
-
-int srv_store_cig_get(uint8_t cig_id, struct bt_bap_stream const *const stream);
-
-int srv_store_cig_pres_dly_find(uint8_t cig_id, uint32_t *common_pres_dly_us,
-				enum bt_audio_dir dir);
+struct client_supp_configs {
+	enum bt_audio_codec_cap_freq freq;
+	enum bt_audio_codec_cap_frame_dur dur;
+	enum bt_audio_codec_cap_chan_count chan_count;
+	struct bt_audio_codec_octets_per_codec_frame oct_per_codec_frame;
+};
 
 /**
  * @brief Search for a common presentation delay across all server Audio Stream Endpoints (ASEs) for
@@ -86,50 +84,152 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 
 int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc);
 
-/* This struct will be passed to the function below to check for valid caps
- * struct client_supp_configs {
- * enum bt_audio_codec_cap_freq freq;
- * enum bt_audio_codec_cap_frame_dur dur;
- * enum bt_audio_codec_cap_chan_count chan_count;
- * struct bt_audio_codec_octets_per_codec_frame oct_per_codec_frame;
- *
- * };
- */
-
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
-				    uint32_t *valid_codec_caps);
-
-int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t *cis_idx);
+				    uint32_t *valid_codec_caps,
+				    struct client_supp_configs const *const client_supp_cfgs);
 
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server);
 
+/**
+ * @brief	Store the available audio context for a server based on conn dst address.
+ *
+ * @param[in] conn  Pointer to the connection.
+ * @param[in] snk_ctx   Sink context.
+ * @param[out] src_ctx  Source context.
+ *
+ * @return	0 on success.
+ * @return	-EINVAL Illegal argument(s)
+ * @return	-ENOENT Server not found.
+ */
 int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir dir);
 
+/**
+ * @brief	Store the available audio context for a server based on conn dst address.
+ *
+ * @param[in] conn  Pointer to the connection.
+ * @param[in] snk_ctx   Sink context.
+ * @param[out] src_ctx  Source context.
+ *
+ * @return	0 on success.
+ * @return	-EINVAL Illegal argument(s)
+ * @return	-ENOENT Server not found.
+ */
 int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_ctx,
 				enum bt_audio_context src_ctx);
 
-int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
-			    const struct bt_audio_codec_cap *codec);
-
+/**
+ * @brief	Store the codec capabilities for a given server based on conn dst address.
+ *
+ * @param[in] conn  Pointer to the connection.
+ * @param[in] dir   Direction to store.
+ * @param[out] codec  Codec capabilities to store.
+ *
+ * @return	0 on success.
+ * @return	-EINVAL Illegal argument(s)
+ * @return	-ENOMEM Out of memory.
+ */
+int srv_store_codec_cap_set(struct bt_conn const *const conn, enum bt_audio_dir dir,
+			    struct bt_audio_codec_cap const *const codec);
+/**
+ * @brief	Get a server from the dst address in the conn pointer.
+ *
+ * @param[in] conn  Pointer to the connection to find the server for.
+ * @param[out] server  Pointer to the server structure to fill. NULL if not found.
+ *
+ * @return	0 on success.
+ * @return	-ENOENT Server not found in storage.
+ */
 int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_store **server);
 
-int srv_store_num_get(void);
+/**
+ * @brief	Get the number of stored servers.
+ *
+ * @param[in]	check_consecutive  Forces all the servers to be stored consecutively.
+ * I.e. if the returned value is used as an iterator, all the servers must be stored consecutively.
+ * If true, the function will return -EINVAL if the servers are not all stored consecutevly.
+ *
+ * @return	number of servers
+ * @return	-EINVAL Non-consecutive server storage detected.
+ */
+int srv_store_num_get(bool check_consecutive);
 
+/**
+ * @brief	Get a server based on index.
+ *
+ * @param[out]	server  Pointer to the server at the given index.
+ * @param[in]	index    Index of the server to retrieve.
+ *
+ * @note	When an entry is deleted, the remaining servers are not re-indexed.
+ * Hence, there may be indexes which are vacant between other servers.
+ *
+ * @return	0 on success.
+ * @return	-EINVAL Illegal value
+ * @return	-ENOENT No server found at index.
+ * @retval	Other negative.	Errors from underlying functions.
+ */
 int srv_store_server_get(struct server_store **server, uint8_t index);
 
+/**
+ * @brief	Add a server to the storage based on conn.
+ *
+ * @param[in] conn  Pointer to the connection associated with the server to add, based on address.
+ *
+ * @note	This function should not be used if the peer uses a random address.
+ *
+ * @return	0 on success.
+ * @return	-EALREADY The server already exists.
+ * @return	-ENOMEM  Out of memory.
+ * @retval	Other negative.	Errors from underlying functions.
+ */
 int srv_store_add(struct bt_conn *conn);
 
-/* This function is only for testing and should not be used.*/
+/**
+ * @brief	Remove a single stored server based on conn pointer.
+ *
+ * @param[in] conn  Pointer to the connection associated with the server to remove.
+ *
+ * @note	Depending on the application, it is strongly recommended to call this function
+ * when an unbonded/untrusted connection is terminated or the bond for that connection is cleared.
+ * If not, the address will still be stored, and other/new connections which maliciously presents
+ * the same address will be recognized as a valid previously stored server.
+ *
+ * @return 0 on success, negative error code on failure.
+ */
 int srv_store_remove(struct bt_conn const *const conn);
 
+/**
+ * @brief	Remove all stored servers.
+ *
+ * @note	Must only be called when there are no active connections.
+ *
+ * @return 0 on success, negative error code on failure.
+ */
 int srv_store_remove_all(void);
 
+/**
+ * @brief Lock/take the server store semaphore.
+ *
+ * @param timeout Waiting period to take the semaphore,
+ *                or one of the special values K_NO_WAIT and K_FOREVER.
+ *
+ * @retval 0 lock taken. One can now operate on the server store.
+ * @retval -EBUSY Returned without waiting.
+ * @retval -EAGAIN Waiting period timed out,
+ *			or the semaphore was reset during the waiting period.
+ */
 int srv_store_lock(k_timeout_t timeout);
 
+/**
+ * @brief UnLock/give the server store semaphore.
+ */
 void srv_store_unlock(void);
 
+/**
+ * @brief	Initializes the server store and clears all contents.
+ *
+ * @return 0 on success, negative error code on failure.
+ */
 int srv_store_init(void);
 
 #endif /* _SERVER_STORE_H_ */

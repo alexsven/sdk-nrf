@@ -103,7 +103,7 @@ static void create_group(void)
 	}
 
 	/* Find out how many servers we have connected */
-	uint8_t num_servers = srv_store_num_get();
+	uint8_t num_servers = srv_store_num_get(true);
 	if (num_servers == 0) {
 		LOG_ERR("No servers found, cannot create unicast group");
 		srv_store_unlock();
@@ -253,7 +253,7 @@ static void cap_start_worker(struct k_work *work)
 		return;
 	}
 
-	uint8_t num_servers = srv_store_num_get();
+	uint8_t num_servers = srv_store_num_get(true);
 
 	/* Check if each of the connected conns in srv_store is in the unicast_group */
 	for (int i = 0; i < num_servers; i++) {
@@ -583,7 +583,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 	if (dir == BT_AUDIO_DIR_SINK && !err) {
 		uint32_t valid_sink_caps = 0;
 
-		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_sink_caps);
+		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_sink_caps, NULL);
 		if (valid_sink_caps) {
 
 			/* Get the valid configuration to set for this stream and put that
@@ -650,7 +650,7 @@ static void discover_cb(struct bt_conn *conn, int err, enum bt_audio_dir dir)
 	} else if (dir == BT_AUDIO_DIR_SOURCE && !err) {
 		uint32_t valid_source_caps = 0;
 
-		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_source_caps);
+		ret = srv_store_valid_codec_cap_check(conn, dir, &valid_source_caps, NULL);
 		if (valid_source_caps) {
 			ret = bt_audio_codec_cfg_set_val(
 				&server->src.lc3_preset[0].codec_cfg, BT_AUDIO_CODEC_CFG_CHAN_ALLOC,
@@ -1201,7 +1201,7 @@ int unicast_client_start(uint8_t cig_index)
 		return ret;
 	}
 
-	uint8_t num_servers = srv_store_num_get();
+	uint8_t num_servers = srv_store_num_get(true);
 
 	for (int i = 0; i < num_servers; i++) {
 		uint8_t state;
@@ -1314,7 +1314,7 @@ int unicast_client_stop(uint8_t cig_index)
 		return ret;
 	}
 
-	uint8_t num_servers = srv_store_num_get();
+	uint8_t num_servers = srv_store_num_get(true);
 
 	for (int i = 0; i < num_servers; i++) {
 		uint8_t state;
@@ -1393,7 +1393,7 @@ int unicast_client_send(struct net_buf const *const audio_frame, uint8_t cig_ind
 		srv_store_all_ep_state_count(BT_BAP_EP_STATE_STREAMING, BT_AUDIO_DIR_SINK);
 	struct le_audio_tx_info tx[num_streaming];
 
-	for (int i = 0; i < srv_store_num_get(); i++) {
+	for (int i = 0; i < srv_store_num_get(true); i++) {
 		struct server_store *server = NULL;
 
 		ret = srv_store_server_get(&server, i);

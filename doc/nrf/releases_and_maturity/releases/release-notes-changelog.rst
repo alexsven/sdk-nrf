@@ -210,6 +210,10 @@ nRF5340 Audio
 -------------
 
 * Added:
+  * A way to store servers in RAM on the unicast client (gateway) side.
+  Be aware that this storage is not persistent (not in flash).
+  The storage does a compare on server address to match multiple servers in a unicast group.
+  This means that if another device appears with the same address, it will be treated as the same server.
 
   * Experimental support for Audio on the nRF5340 DK, with LED state indications and button controls.
   * Experimental support for stereo in :ref:`broadcast sink app<nrf53_audio_broadcast_sink_app>`.
@@ -224,7 +228,9 @@ nRF5340 Audio
     See :file:`overlay-unicast_server.conf` for more information.
 
 * Updated:
-
+  * The unicast client (gateway) has been rewritten to support N channels.
+  * The unicast client (gateway) now checks if a server has a resolvable address.
+    If this has not been resolved, the discovery process will start in the identity resolved callback.
   * The application to use the ``NFC.TAGHEADER0`` value from FICR as the broadcast ID instead of using a random ID.
   * The application to change from Newlib to Picolib to align with |NCS| and Zephyr.
   * The application to use the :ref:`net_buf_interface` API to pass audio data between threads.

@@ -165,9 +165,19 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	k_mutex_unlock(&mtx_duplicate_scan);
 }
 
+#define ADDR_RESOLVED_BITMASK (0x02)
+static bool is_resolved(const bt_addr_le_t *addr)
+{
+	return (addr->type & ADDR_RESOLVED_BITMASK) != 0;
+}
+
 #if defined(CONFIG_BT_SMP)
 static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
 {
+	/* The address has not yet been resolved at this point if this is the firt they bond
+	 * After this the controller resolves the address for us.
+	 * Create the server on bonding_complete callback. The addresses are resolved by then
+	 */
 	int ret;
 	struct bt_mgmt_msg msg;
 
@@ -179,21 +189,54 @@ static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum 
 			LOG_WRN("Failed to disconnect %d", ret);
 		}
 	} else {
-		LOG_DBG("Security changed: level %d", level);
+		const bt_addr_le_t *peer_addr = bt_conn_get_dst(conn);
+		char peer_str[BT_ADDR_LE_STR_LEN];
+
+		bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
+		if (bt_addr_le_is_rpa(peer_addr) && !is_resolved(peer_addr)) {
+			LOG_WRN("Security changed: level %d %s (unresolved)", level, peer_str);
+		} else if (is_resolved(peer_addr)) {
+			LOG_WRN("Security changed: level %d %s (resolved)", level, peer_str);
+		} else {
+			LOG_WRN("Security changed: level %d %s (unknown)", level, peer_str);
+		}
+
 		/* Publish connected */
 		msg.event = BT_MGMT_SECURITY_CHANGED;
 		msg.conn = conn;
+		msg.rpa = *peer_addr;
 
 		ret = zbus_chan_pub(&bt_mgmt_chan, &msg, K_NO_WAIT);
 		ERR_CHK(ret);
 	}
 }
+
+void identity_resolved_cb(struct bt_conn *conn, const bt_addr_le_t *rpa,
+			  const bt_addr_le_t *identity)
+{
+	char rpa_str[BT_ADDR_LE_STR_LEN];
+	char identity_str[BT_ADDR_LE_STR_LEN];
+	(void)bt_addr_le_to_str(rpa, rpa_str, BT_ADDR_LE_STR_LEN);
+	(void)bt_addr_le_to_str(identity, identity_str, BT_ADDR_LE_STR_LEN);
+	LOG_DBG("ID is resolved: RPA %s, Identity %s", rpa_str, identity_str);
+
+	struct bt_mgmt_msg msg;
+
+	msg.event = BT_MGMT_IDENTITY_RESOLVED;
+	msg.conn = conn;
+	msg.rpa = *rpa;
+	msg.identity = *identity;
+
+	ERR_CHK(zbus_chan_pub(&bt_mgmt_chan, &msg, K_NO_WAIT));
+};
+
 #endif /* defined(CONFIG_BT_SMP) */
 
 static struct bt_conn_cb conn_callbacks = {
 	.connected = connected_cb,
 	.disconnected = disconnected_cb,
 #if defined(CONFIG_BT_SMP)
+	.identity_resolved = identity_resolved_cb,
 	.security_changed = security_changed_cb,
 #endif /* defined(CONFIG_BT_SMP) */
 };

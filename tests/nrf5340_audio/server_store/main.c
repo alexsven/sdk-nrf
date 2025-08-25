@@ -44,7 +44,7 @@ ZTEST(suite_server_store, test_srv_store_init)
 	ret = srv_store_init();
 	zassert_equal(ret, 0, "Init did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 0, "Number of servers should be zero after init");
 
 	TEST_CONN(1);
@@ -52,13 +52,13 @@ ZTEST(suite_server_store, test_srv_store_init)
 	ret = srv_store_add(&test_1_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 1, "Number of servers should be one after adding a server");
 
 	ret = srv_store_remove_all();
 	zassert_equal(ret, 0, "Clearing all servers did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 0, "Number of servers should be zero after clearing");
 
 	srv_store_unlock();
@@ -85,7 +85,7 @@ ZTEST(suite_server_store, test_srv_store_multiple)
 	ret = srv_store_add(&test_103_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 3, "Number of servers should be three after adding three servers");
 
 	struct server_store *retr_server = NULL;
@@ -192,14 +192,24 @@ ZTEST(suite_server_store, test_srv_remove)
 	ret = srv_store_add(&test_102_conn);
 	zassert_equal(ret, 0, "Adding server did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 3, "Number of servers should be three after adding three servers");
 
 	ret = srv_store_remove(&test_102_conn);
 	zassert_equal(ret, 0, "Removing server by connection did not return zero");
 
-	ret = srv_store_num_get();
+	ret = srv_store_num_get(true);
 	zassert_equal(ret, 2, "Number of servers should be two after removing one");
+
+	ret = srv_store_remove(&test_100_conn);
+	zassert_equal(ret, 0, "Removing server by connection did not return zero");
+
+	/* Test with creating a gap in server store. */
+	ret = srv_store_num_get(true);
+	zassert_equal(ret, -EINVAL, "Number of servers should be two after removing one");
+
+	ret = srv_store_num_get(false);
+	zassert_equal(ret, 1, "Number of servers should be two after removing one");
 
 	srv_store_unlock();
 }
@@ -522,7 +532,7 @@ ZTEST(suite_server_store, test_assert_no_lock)
 	ztest_set_assert_valid(true);
 
 	/* This should trigger the assertion in valid_entry_check() */
-	int ret = srv_store_num_get();
+	int ret = srv_store_num_get(true);
 
 	/* Disable assert catching */
 	ztest_set_assert_valid(false);

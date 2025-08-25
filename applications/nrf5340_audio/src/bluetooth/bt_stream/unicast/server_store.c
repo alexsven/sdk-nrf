@@ -7,6 +7,7 @@
 #include <zephyr/sys/slist.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/addr.h>
 #include <string.h>
 
 #include "server_store.h"
@@ -47,8 +48,17 @@ static struct server_store servers[CONFIG_BT_MAX_CONN];
 static int server_add(struct server_store *server)
 {
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
-		if (servers[i].conn == NULL) {
+		const bt_addr_le_t *peer_addr = bt_conn_get_dst(server->conn);
+		char peer_str[BT_ADDR_LE_STR_LEN];
+		char local_str[BT_ADDR_LE_STR_LEN];
+
+		bt_addr_le_to_str(&servers[i].addr, local_str, BT_ADDR_LE_STR_LEN);
+		bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
+		LOG_WRN("storage: %s, peer: %s", local_str, peer_str);
+
+		if (bt_addr_le_eq(&servers[i].addr, BT_ADDR_LE_ANY)) {
 			memcpy(&servers[i], server, sizeof(struct server_store));
+			LOG_WRN("Added server %s to index %d", peer_str, i);
 			return 0;
 		}
 	}
@@ -425,6 +435,13 @@ static int srv_store_from_conn_get_internal(struct bt_conn const *const conn,
 					    struct server_store **server)
 {
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
+		const bt_addr_le_t *peer_addr = bt_conn_get_dst(conn);
+		char peer_str[BT_ADDR_LE_STR_LEN];
+		char local_str[BT_ADDR_LE_STR_LEN];
+
+		bt_addr_le_to_str(&servers[i].addr, local_str, BT_ADDR_LE_STR_LEN);
+		bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
+
 		if (bt_addr_le_eq(&servers[i].addr, bt_conn_get_dst(conn))) {
 			*server = &servers[i];
 			return 0;
@@ -625,9 +642,11 @@ int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_
 }
 
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
-				    uint32_t *valid_codec_caps)
+				    uint32_t *valid_codec_caps,
+				    struct client_supp_configs const *const client_supp_cfgs)
 {
 	valid_entry_check(__func__);
+	ARG_UNUSED(client_supp_cfgs);
 
 	int ret;
 
@@ -666,8 +685,6 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 				LOG_DBG("Valid codec capabilities found for device, EP %d", i);
 				memcpy(&server->snk.lc3_preset[i], preset,
 				       sizeof(struct bt_bap_lc3_preset));
-				// memcpy(&server->snk.lc3_preset[i].qos, &preset->qos,
-				//        sizeof(preset->qos));
 				*valid_codec_caps |= 1 << i;
 			}
 		}
@@ -687,7 +704,7 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 
 			(void)bt_audio_data_parse(server->src.codec_caps[i].data,
 						  server->src.codec_caps[i].data_len,
-						  source_parse_cb, preset);
+						  source_parse_cb, &preset);
 
 			if (preset != NULL) {
 				LOG_DBG("Valid codec capabilities found for device, EP %d", i);
@@ -698,14 +715,6 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 	}
 
 	return 0;
-}
-
-int srv_store_stream_idx_get(struct bt_bap_stream const *const stream, uint8_t *cig_idx,
-			     uint8_t *cis_idx)
-{
-	valid_entry_check(__func__);
-	LOG_ERR("Stream %p not found in server store", stream);
-	return -ENOENT;
 }
 
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
@@ -836,7 +845,7 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 
 	for (int srv_idx = 0; srv_idx < CONFIG_BT_MAX_CONN; srv_idx++) {
 		server = &servers[srv_idx];
-		if (server == NULL) {
+		if (server->conn == NULL) {
 			continue;
 		}
 		count = srv_store_ep_state_count(server->conn, state, dir);
@@ -876,8 +885,8 @@ int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_
 	return 0;
 }
 
-int srv_store_codec_cap_set(struct bt_conn *conn, enum bt_audio_dir dir,
-			    const struct bt_audio_codec_cap *codec)
+int srv_store_codec_cap_set(struct bt_conn const *const conn, enum bt_audio_dir dir,
+			    struct bt_audio_codec_cap const *const codec)
 {
 	valid_entry_check(__func__);
 	int ret;
@@ -952,14 +961,21 @@ int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_stor
 	return ret;
 }
 
-int srv_store_num_get(void)
+int srv_store_num_get(bool check_consecutive)
 {
 	valid_entry_check(__func__);
 	int num_servers = 0;
+	bool prev_found = true;
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
-		if (servers[i].conn != NULL) {
+		if (!bt_addr_le_eq(&servers[i].addr, BT_ADDR_LE_ANY)) {
 			num_servers++;
+			if (!prev_found && check_consecutive) {
+				LOG_ERR("Non-consecutive server storage detected");
+				return -EINVAL;
+			}
+		} else {
+			prev_found = false;
 		}
 	}
 
@@ -992,6 +1008,11 @@ int srv_store_add(struct bt_conn *conn)
 	struct server_store *temp_server = NULL;
 
 	const bt_addr_le_t *peer_addr = bt_conn_get_dst(conn);
+	char peer_str[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
+
+	LOG_WRN("Trying to add server for peer: %s", peer_str);
 	/*TODO: Check. If the address is random, we delete when the connection is removed */
 
 	/* Check if server already exists */
@@ -1051,7 +1072,6 @@ int srv_store_remove_all(void)
 }
 
 int srv_store_lock(k_timeout_t timeout)
-
 {
 	int ret;
 
