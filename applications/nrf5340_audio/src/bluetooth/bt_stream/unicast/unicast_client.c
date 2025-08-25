@@ -188,17 +188,22 @@ static void create_group(void)
 	for (int i = 0; i < group_sink_iterator; i++) {
 		pair_params[i].tx_param = &group_sink_stream_params[i];
 		/* Search streams for a matching source */
+		bool source_found = false;
 		for (int j = stream_iterator; j < group_source_iterator; j++) {
 			/* Check if the source stream belongs to the same connection */
 			if (group_sink_stream_params[i].stream->conn ==
 			    group_source_stream_params[j].stream->conn) {
 				pair_params[i].rx_param = &group_source_stream_params[j];
+				source_found = true;
 				stream_iterator++;
 				break;
 			}
 		}
-		pair_params[i].rx_param = NULL;
-		stream_iterator++;
+		if (!source_found) {
+			LOG_DBG("Setting RX param for sink EP %d to NULL", i);
+			pair_params[i].rx_param = NULL;
+			stream_iterator++;
+		}
 	}
 
 	group_param.params = pair_params;
@@ -339,6 +344,46 @@ static void unicast_client_location_cb(struct bt_conn *conn, enum bt_audio_dir d
 	ret = srv_store_from_conn_get(conn, &server);
 	if (ret) {
 		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+		srv_store_unlock();
+		return;
+	}
+
+	if (dir == BT_AUDIO_DIR_SOURCE) {
+		if ((loc & BT_AUDIO_LOCATION_FRONT_LEFT) || (loc & BT_AUDIO_LOCATION_BACK_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_FRONT_LEFT_OF_CENTER) ||
+		    (loc & BT_AUDIO_LOCATION_SIDE_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_TOP_FRONT_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_TOP_BACK_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_TOP_SIDE_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_BOTTOM_FRONT_LEFT) ||
+		    (loc & BT_AUDIO_LOCATION_FRONT_LEFT_WIDE) ||
+		    (loc & BT_AUDIO_LOCATION_LEFT_SURROUND) ||
+		    (loc == BT_AUDIO_LOCATION_MONO_AUDIO)) {
+			ret = srv_store_location_set(conn, dir, BT_AUDIO_LOCATION_FRONT_LEFT);
+			if (ret) {
+				LOG_ERR("Failed to set location for conn %p, dir %d, loc %d: %d",
+					(void *)conn, dir, loc, ret);
+				srv_store_unlock();
+				return;
+			}
+		} else if ((loc & BT_AUDIO_LOCATION_FRONT_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_BACK_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_FRONT_RIGHT_OF_CENTER) ||
+			   (loc & BT_AUDIO_LOCATION_SIDE_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_TOP_FRONT_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_TOP_BACK_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_TOP_SIDE_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_BOTTOM_FRONT_RIGHT) ||
+			   (loc & BT_AUDIO_LOCATION_FRONT_RIGHT_WIDE) ||
+			   (loc & BT_AUDIO_LOCATION_RIGHT_SURROUND)) {
+			ret = srv_store_location_set(conn, dir, BT_AUDIO_LOCATION_FRONT_RIGHT);
+			if (ret) {
+				LOG_ERR("Failed to set location for conn %p, dir %d, loc %d: %d",
+					(void *)conn, dir, loc, ret);
+				srv_store_unlock();
+				return;
+			}
+		}
 		srv_store_unlock();
 		return;
 	}
