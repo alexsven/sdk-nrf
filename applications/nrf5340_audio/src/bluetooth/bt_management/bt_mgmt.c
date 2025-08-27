@@ -340,6 +340,9 @@ int bt_mgmt_bonding_clear(void)
 {
 	int ret;
 
+	/* TODO: Delay. Awaiting fix in NCSDK-35186 */
+	k_sleep(K_MSEC(100));
+
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		LOG_INF("Clearing all bonds");
 

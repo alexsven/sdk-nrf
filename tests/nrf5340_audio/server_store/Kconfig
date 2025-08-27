@@ -7,3 +7,7 @@ config CODEC_CAP_COUNT_MAX
 config UNICAST_CLIENT_LOG_LEVEL
 	int "Log level for unicast client"
 	default 4
+
+config SERVER_STORE_LOG_LEVEL
+	int "Log level for server store"
+	default 4

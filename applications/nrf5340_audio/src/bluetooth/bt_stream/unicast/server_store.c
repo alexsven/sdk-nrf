@@ -17,7 +17,7 @@
 #include <../subsys/bluetooth/audio/bap_endpoint.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(unicast_client, CONFIG_UNICAST_CLIENT_LOG_LEVEL);
+LOG_MODULE_REGISTER(server_store, CONFIG_SERVER_STORE_LOG_LEVEL);
 
 #ifndef CONFIG_BT_AUDIO_PREF_SAMPLE_RATE_VALUE
 #define CONFIG_BT_AUDIO_PREF_SAMPLE_RATE_VALUE 0x08
@@ -1018,7 +1018,7 @@ int srv_store_add(struct bt_conn *conn)
 
 	bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
 
-	LOG_WRN("Trying to add server for peer: %s", peer_str);
+	LOG_INF("Adding server for peer: %s", peer_str);
 	/*TODO: Check. If the address is random, we delete when the connection is removed */
 
 	/* Check if server already exists */
