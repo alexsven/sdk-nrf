@@ -165,12 +165,6 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	k_mutex_unlock(&mtx_duplicate_scan);
 }
 
-#define ADDR_RESOLVED_BITMASK (0x02)
-static bool is_resolved(const bt_addr_le_t *addr)
-{
-	return (addr->type & ADDR_RESOLVED_BITMASK) != 0;
-}
-
 #if defined(CONFIG_BT_SMP)
 static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
 {
@@ -193,18 +187,13 @@ static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum 
 		char peer_str[BT_ADDR_LE_STR_LEN];
 
 		bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
-		if (bt_addr_le_is_rpa(peer_addr) && !is_resolved(peer_addr)) {
-			LOG_WRN("Security changed: level %d %s (unresolved)", level, peer_str);
-		} else if (is_resolved(peer_addr)) {
-			LOG_WRN("Security changed: level %d %s (resolved)", level, peer_str);
-		} else {
-			LOG_WRN("Security changed: level %d %s (unknown)", level, peer_str);
-		}
+
+		LOG_INF("Security changed: level %d %s", level, peer_str);
 
 		/* Publish connected */
 		msg.event = BT_MGMT_SECURITY_CHANGED;
 		msg.conn = conn;
-		msg.rpa = *peer_addr;
+		msg.addr = *peer_addr;
 
 		ret = zbus_chan_pub(&bt_mgmt_chan, &msg, K_NO_WAIT);
 		ERR_CHK(ret);
@@ -218,13 +207,13 @@ void identity_resolved_cb(struct bt_conn *conn, const bt_addr_le_t *rpa,
 	char identity_str[BT_ADDR_LE_STR_LEN];
 	(void)bt_addr_le_to_str(rpa, rpa_str, BT_ADDR_LE_STR_LEN);
 	(void)bt_addr_le_to_str(identity, identity_str, BT_ADDR_LE_STR_LEN);
-	LOG_DBG("ID is resolved: RPA %s, Identity %s", rpa_str, identity_str);
+	LOG_INF("ID is resolved. RPA: %s, Identity: %s", rpa_str, identity_str);
 
 	struct bt_mgmt_msg msg;
 
 	msg.event = BT_MGMT_IDENTITY_RESOLVED;
 	msg.conn = conn;
-	msg.rpa = *rpa;
+	msg.addr = *rpa;
 	msg.identity = *identity;
 
 	ERR_CHK(zbus_chan_pub(&bt_mgmt_chan, &msg, K_NO_WAIT));
@@ -245,11 +234,27 @@ void bond_deleted_cb(uint8_t id, const bt_addr_le_t *peer)
 {
 	char str[BT_ADDR_LE_STR_LEN];
 	(void)bt_addr_le_to_str(peer, str, BT_ADDR_LE_STR_LEN);
-	LOG_WRN("Bond deleted: id %d, peer %s. MUST REMOVE ENTRY FROM SERVER STORE", id, str);
+	LOG_INF("Bond deleted: id %d, peer %s. MUST REMOVE ENTRY FROM SERVER STORE", id, str);
+}
+
+void pairing_complete_cb(struct bt_conn *conn, bool bonded)
+{
+	if (bonded) {
+		LOG_INF("Pairing complete. Bonded.");
+	} else {
+		LOG_INF("Pairing complete. Not bonded.");
+	}
+}
+
+void pairing_failed_cb(struct bt_conn *conn, enum bt_security_err reason)
+{
+	LOG_ERR("Pairing failed: %s", bt_security_err_to_str(reason));
 }
 
 static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
 	.bond_deleted = bond_deleted_cb,
+	.pairing_complete = pairing_complete_cb,
+	.pairing_failed = pairing_failed_cb,
 };
 
 static void bt_enabled_cb(int err)
@@ -388,6 +393,15 @@ int bt_mgmt_init(void)
 {
 	int ret;
 
+	if (IS_ENABLED(CONFIG_BT_CONN)) {
+		bt_conn_cb_register(&conn_callbacks);
+		ret = bt_conn_auth_info_cb_register(&conn_auth_info_callbacks);
+		if (ret) {
+			LOG_ERR("Failed to register conn auth info callbacks: %d", ret);
+			return ret;
+		}
+	}
+
 	ret = bt_enable(bt_enabled_cb);
 	if (ret) {
 		return ret;
@@ -461,15 +475,6 @@ int bt_mgmt_init(void)
 	ret = local_identity_addr_print();
 	if (ret) {
 		return ret;
-	}
-
-	if (IS_ENABLED(CONFIG_BT_CONN)) {
-		bt_conn_cb_register(&conn_callbacks);
-		ret = bt_conn_auth_info_cb_register(&conn_auth_info_callbacks);
-		if (ret) {
-			LOG_ERR("Failed to register conn auth info callbacks: %d", ret);
-			return ret;
-		}
 	}
 
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL) || IS_ENABLED(CONFIG_BT_BROADCASTER)) {

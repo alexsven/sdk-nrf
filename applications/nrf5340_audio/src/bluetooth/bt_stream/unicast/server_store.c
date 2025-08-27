@@ -101,7 +101,7 @@ static int server_remove_by_conn(struct bt_conn const *const conn)
 	}
 
 	for (int i = 0; i < CONFIG_BT_MAX_CONN; i++) {
-		if (servers[i].conn == conn) {
+		if (bt_addr_le_eq(&servers[i].addr, peer_addr)) {
 			server = &servers[i];
 			break;
 		}
@@ -845,9 +845,15 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 
 	for (int srv_idx = 0; srv_idx < CONFIG_BT_MAX_CONN; srv_idx++) {
 		server = &servers[srv_idx];
+		if (bt_addr_le_eq(&server->addr, BT_ADDR_LE_ANY)) {
+			/* Empty entry */
+			continue;
+		}
+
 		if (server->conn == NULL) {
 			continue;
 		}
+
 		count = srv_store_ep_state_count(server->conn, state, dir);
 		if (count < 0) {
 			LOG_ERR("Failed to get ep state count for server "
@@ -990,7 +996,7 @@ int srv_store_server_get(struct server_store **server, uint8_t index)
 		return -EINVAL;
 	}
 
-	if (servers[index].conn == NULL) {
+	if (servers[index].conn == NULL || bt_addr_le_eq(&servers[index].addr, BT_ADDR_LE_ANY)) {
 		*server = NULL;
 		return -ENOENT;
 	}

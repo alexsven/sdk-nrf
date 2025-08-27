@@ -374,12 +374,6 @@ static void le_audio_msg_sub_thread(void)
 	}
 }
 
-#define ADDR_RESOLVED_BITMASK (0x02)
-static bool bt_addr_le_is_resolved(const bt_addr_le_t *addr)
-{
-	return (addr->type & ADDR_RESOLVED_BITMASK) != 0;
-}
-
 static void discovery_process_start(struct bt_conn *conn)
 {
 	int ret;
@@ -424,16 +418,17 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 		break;
 
 	case BT_MGMT_SECURITY_CHANGED:
-		LOG_INF("Security changed");
-		if (BT_ADDR_IS_NRPA(&msg->rpa.a)) {
+		if (BT_ADDR_IS_NRPA(&msg->addr.a)) {
 			ERR_CHK_MSG(-EINVAL, "Non-resolvable private not supported by application");
 		}
 
-		if (bt_addr_le_is_rpa(&msg->rpa) && !bt_addr_le_is_resolved(&msg->rpa)) {
+		if (!bt_addr_le_is_identity(&msg->addr)) {
 			/* If this is the case, we wait for ID resolution.*/
-			LOG_DBG("Waiting for address to be resolved");
+			/* TODO: Double check this func with Herman*/
+			LOG_INF("Security changed. Addr not resolved");
 			return;
 		}
+		LOG_INF("Security changed. Addr is resolved");
 
 		discovery_process_start(msg->conn);
 

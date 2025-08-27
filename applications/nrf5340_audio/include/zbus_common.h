@@ -77,7 +77,7 @@ struct bt_mgmt_msg {
 	struct bt_le_per_adv_sync *pa_sync;
 	uint32_t broadcast_id;
 	uint8_t pa_sync_term_reason;
-	bt_addr_le_t rpa;
+	bt_addr_le_t addr;
 	bt_addr_le_t identity;
 };
 
