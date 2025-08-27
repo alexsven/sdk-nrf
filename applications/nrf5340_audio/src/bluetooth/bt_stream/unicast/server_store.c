@@ -54,11 +54,11 @@ static int server_add(struct server_store *server)
 
 		bt_addr_le_to_str(&servers[i].addr, local_str, BT_ADDR_LE_STR_LEN);
 		bt_addr_le_to_str(peer_addr, peer_str, BT_ADDR_LE_STR_LEN);
-		LOG_WRN("storage: %s, peer: %s", local_str, peer_str);
+		LOG_INF("storage: %s, peer: %s", local_str, peer_str);
 
 		if (bt_addr_le_eq(&servers[i].addr, BT_ADDR_LE_ANY)) {
 			memcpy(&servers[i], server, sizeof(struct server_store));
-			LOG_WRN("Added server %s to index %d", peer_str, i);
+			LOG_INF("Added server %s to index %d", peer_str, i);
 			return 0;
 		}
 	}
