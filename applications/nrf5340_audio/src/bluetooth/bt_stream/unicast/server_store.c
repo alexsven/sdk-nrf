@@ -601,7 +601,8 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 	return 0;
 }
 
-int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc)
+int srv_store_location_set(struct bt_conn const *const conn, enum bt_audio_dir dir,
+			   enum bt_audio_location loc)
 {
 	valid_entry_check(__func__);
 

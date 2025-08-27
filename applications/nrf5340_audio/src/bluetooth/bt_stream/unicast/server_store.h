@@ -69,10 +69,11 @@ struct client_supp_configs {
  * ASEs. If that is not possible, it will try to satisfy the max and min values.
  *
  * @param common_pres_dly_us Pointer to store the new common presentation delay in microseconds.
- * @param dir The direction of the Audio Stream Endpoints (ASEs) to search for.
+ * @param dir	The direction of the Audio Stream Endpoints (ASEs) to search for.
  *
- * @note Thisfunction will search across CIGs. This may not make sense, as the the same presentation
- * delay is only mandated within a CIG.
+ * @note	This function will search across CIGs. This may not make sense, as the same
+ * presentation delay is only mandated within a CIG. srv_store_lock() must be called before
+ * accessing this function.
  *
  * @return 0 on success, negative error code on failure.
  * @return -ESPIPE if there is no common presentation delay found.
@@ -82,17 +83,56 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 			    struct bt_bap_qos_cfg_pref const *qos_cfg_pref_in,
 			    bool *group_reconfig_needed);
 
-int srv_store_location_set(struct bt_conn *conn, enum bt_audio_dir dir, enum bt_audio_location loc);
+/**
+ * @brief	Set the valid locations of a unicast server.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
+ *
+ * @param[in] conn  Pointer to the connection.
+ * @param[in] dir   Direction to store.
+ * @param[in] loc  Location to store.
+ *
+ * @return	0 on success.
+ * @return	-ENOENT Server not found.
+ */
+int srv_store_location_set(struct bt_conn const *const conn, enum bt_audio_dir dir,
+			   enum bt_audio_location loc);
 
+/**
+ * @brief	Check which codec capabilities are valid.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
+ *
+ * @param[in] conn  Pointer to the connection.
+ * @param[in] dir   Direction to check.
+ * @param[out] valid_codec_caps  Bitfield will be populated with valid codec capabilities.
+ * @param[in] client_supp_cfgs  The supported configs of the unicast client.
+ *
+ * @return	0 on success.
+ * @return	-ENOENT Server not found.
+ */
 int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_audio_dir dir,
 				    uint32_t *valid_codec_caps,
 				    struct client_supp_configs const *const client_supp_cfgs);
 
+/**
+ * @brief	Get a server based on stream pointer.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
+ *
+ * @param[in] stream  Pointer to the stream.
+ * @param[out] server  Pointer to the server structure to fill. NULL if not found.
+ *
+ * @return	0 on success.
+ * @return	-ENOENT Server not found.
+ */
 int srv_store_from_stream_get(struct bt_bap_stream const *const stream,
 			      struct server_store **server);
 
 /**
  * @brief	Store the available audio context for a server based on conn dst address.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
  *
  * @param[in] conn  Pointer to the connection.
  * @param[in] snk_ctx   Sink context.
@@ -106,6 +146,8 @@ int srv_store_all_ep_state_count(enum bt_bap_ep_state state, enum bt_audio_dir d
 
 /**
  * @brief	Store the available audio context for a server based on conn dst address.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
  *
  * @param[in] conn  Pointer to the connection.
  * @param[in] snk_ctx   Sink context.
@@ -121,6 +163,8 @@ int srv_store_avail_context_set(struct bt_conn *conn, enum bt_audio_context snk_
 /**
  * @brief	Store the codec capabilities for a given server based on conn dst address.
  *
+ * @note	srv_store_lock() must be called before accessing this function.
+ *
  * @param[in] conn  Pointer to the connection.
  * @param[in] dir   Direction to store.
  * @param[out] codec  Codec capabilities to store.
@@ -134,6 +178,8 @@ int srv_store_codec_cap_set(struct bt_conn const *const conn, enum bt_audio_dir 
 /**
  * @brief	Get a server from the dst address in the conn pointer.
  *
+ * @note	srv_store_lock() must be called before accessing this function.
+ *
  * @param[in] conn  Pointer to the connection to find the server for.
  * @param[out] server  Pointer to the server structure to fill. NULL if not found.
  *
@@ -144,6 +190,8 @@ int srv_store_from_conn_get(struct bt_conn const *const conn, struct server_stor
 
 /**
  * @brief	Get the number of stored servers.
+ *
+ * @note	srv_store_lock() must be called before accessing this function.
  *
  * @param[in]	check_consecutive  Forces all the servers to be stored consecutively.
  * I.e. if the returned value is used as an iterator, all the servers must be stored consecutively.
@@ -162,6 +210,7 @@ int srv_store_num_get(bool check_consecutive);
  *
  * @note	When an entry is deleted, the remaining servers are not re-indexed.
  * Hence, there may be indexes which are vacant between other servers.
+ * srv_store_lock() must be called before accessing this function.
  *
  * @return	0 on success.
  * @return	-EINVAL Illegal value
@@ -176,6 +225,7 @@ int srv_store_server_get(struct server_store **server, uint8_t index);
  * @param[in] conn  Pointer to the connection associated with the server to add, based on address.
  *
  * @note	This function should not be used if the peer uses a random address.
+ * srv_store_lock() must be called before accessing this function.
  *
  * @return	0 on success.
  * @return	-EALREADY The server already exists.
@@ -193,6 +243,7 @@ int srv_store_add(struct bt_conn *conn);
  * when an unbonded/untrusted connection is terminated or the bond for that connection is cleared.
  * If not, the address will still be stored, and other/new connections which maliciously presents
  * the same address will be recognized as a valid previously stored server.
+ * srv_store_lock() must be called before accessing this function.
  *
  * @return 0 on success, negative error code on failure.
  */
@@ -202,6 +253,7 @@ int srv_store_remove(struct bt_conn const *const conn);
  * @brief	Remove all stored servers.
  *
  * @note	Must only be called when there are no active connections.
+ * srv_store_lock() must be called before accessing this function.
  *
  * @return 0 on success, negative error code on failure.
  */
@@ -221,7 +273,7 @@ int srv_store_remove_all(void);
 int srv_store_lock(k_timeout_t timeout);
 
 /**
- * @brief UnLock/give the server store semaphore.
+ * @brief Unlock/give the server store semaphore.
  */
 void srv_store_unlock(void);
 
