@@ -80,6 +80,7 @@ struct client_supp_configs {
  * @return -EMLINK if the search was conducted across multiple CIGs
  */
 int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pres_dly_us,
+			    uint32_t *existing_pres_dly_us,
 			    struct bt_bap_qos_cfg_pref const *qos_cfg_pref_in,
 			    bool *group_reconfig_needed);
 
@@ -99,7 +100,7 @@ int srv_store_location_set(struct bt_conn const *const conn, enum bt_audio_dir d
 			   enum bt_audio_location loc);
 
 /**
- * @brief	Check which codec capabilities are valid.
+ * @brief	Check which codec capabilities	 are valid.
  *
  * @note	srv_store_lock() must be called before accessing this function.
  *

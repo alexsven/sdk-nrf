@@ -463,10 +463,13 @@ to update the entire group. If it is a new group, no reconfig is needed.
  * bt_bap_ep -> cig_id;
  */
 int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pres_dly_us,
+			    uint32_t *existing_pres_dly_us,
 			    struct bt_bap_qos_cfg_pref const *qos_cfg_pref_in,
 			    bool *group_reconfig_needed)
 {
 	valid_entry_check(__func__);
+
+	*existing_pres_dly_us = 0;
 
 	int ret;
 
@@ -519,16 +522,16 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 					continue;
 				}
 
-				uint32_t existing_pres_dly_us =
+				*existing_pres_dly_us =
 					server->snk.cap_streams[i].bap_stream.qos->pd;
 
-				if (existing_pres_dly_us == 0) {
+				if (*existing_pres_dly_us == 0) {
 					LOG_ERR("Existing presentation delay is zero");
 					return -EINVAL;
 				}
 
-				if (pres_dly_in_range(existing_pres_dly_us, qos_cfg_pref_in)) {
-					*computed_pres_dly_us = existing_pres_dly_us;
+				if (pres_dly_in_range(*existing_pres_dly_us, qos_cfg_pref_in)) {
+					*computed_pres_dly_us = *existing_pres_dly_us;
 					return 0;
 				}
 
@@ -550,7 +553,7 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 					continue;
 				}
 
-				uint32_t existing_pres_dly_us =
+				*existing_pres_dly_us =
 					server->src.cap_streams[i].bap_stream.qos->pd;
 
 				if (existing_pres_dly_us == 0) {
@@ -558,8 +561,8 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 					return -EINVAL;
 				}
 
-				if (pres_dly_in_range(existing_pres_dly_us, qos_cfg_pref_in)) {
-					*computed_pres_dly_us = existing_pres_dly_us;
+				if (pres_dly_in_range(*existing_pres_dly_us, qos_cfg_pref_in)) {
+					*computed_pres_dly_us = *existing_pres_dly_us;
 					return 0;
 				}
 

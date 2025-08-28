@@ -219,6 +219,7 @@ static void create_group(void)
 	if (ret) {
 		LOG_ERR("Failed to create unicast group: %d", ret);
 	} else {
+		LOG_INF("Created unicast group");
 		unicast_group_created = true;
 	}
 
@@ -287,14 +288,15 @@ static void cap_start_worker(struct k_work *work)
 		}
 
 		bool server_found = false;
-		struct bt_bap_stream *stream;
+		struct bt_bap_stream *stream_element;
 
 		/* Check each of the streams in the unicast_group against all of the streams in the
 		 * server
 		 */
-		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream, _node) {
+		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream_element, _node) {
 			for (int j = 0; j < ARRAY_SIZE(tmp_server->snk.cap_streams); j++) {
-				if (memcmp(stream, &tmp_server->snk.cap_streams[j].bap_stream,
+				if (memcmp(stream_element,
+					   &tmp_server->snk.cap_streams[j].bap_stream,
 					   sizeof(struct bt_bap_stream)) == 0) {
 					LOG_DBG("Server %d already in unicast group, skipping", i);
 					server_found = true;
@@ -764,8 +766,10 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	LOG_DBG("Configured Stream info: %s, %p, dir %d", server->name, (void *)stream, dir);
 
 	bool group_reconfigure_needed = false;
+	uint32_t existing_pres_dly_us = 0;
 
-	ret = srv_store_pres_dly_find(stream, &new_pres_dly_us, pref, &group_reconfigure_needed);
+	ret = srv_store_pres_dly_find(stream, &new_pres_dly_us, &existing_pres_dly_us, pref,
+				      &group_reconfigure_needed);
 	if (ret) {
 		LOG_ERR("Cannot get a valid presentation delay");
 		srv_store_unlock();
@@ -782,10 +786,19 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	if (((new_pres_dly_us != stream->qos->pd) &&
 	     le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED)) ||
 	    group_reconfigure_needed) {
-		LOG_WRN("Presentation delay changed from %d us to %d us", stream->qos->pd,
-			new_pres_dly_us);
+		LOG_WRN("Incoming PD: %d, us prev group PD: %d us, new PD %d us", stream->qos->pd,
+			existing_pres_dly_us, new_pres_dly_us);
 		/* Should stop all running streams to update their presentation delay */
-		stream->qos->pd = new_pres_dly_us;
+
+		/* update all streams in group */
+		struct bt_bap_stream *stream_element;
+
+		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream_element, _node) {
+			stream_element->qos->pd = new_pres_dly_us;
+			LOG_WRN("PD set to %d us ", new_pres_dly_us);
+		}
+
+		LOG_WRN("iteratior done");
 	}
 
 	le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, stream->conn, stream, dir);
@@ -875,11 +888,13 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 	/* Check if unicast_group_recreate has been requested */
 	if (unicast_group_created == false) {
 		/* Check if all streams have been released, only delete group if they all are */
-		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream, _node) {
+		struct bt_bap_stream *stream_element;
+
+		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream_element, _node) {
 			/* If a stream has an endpoint, it is not ready to be removed
 			 * from a group, as it is not in an idle state
 			 */
-			if (stream->ep != NULL) {
+			if (stream_element->ep != NULL) {
 				LOG_DBG("stream %p is not released", stream);
 				return;
 			}
