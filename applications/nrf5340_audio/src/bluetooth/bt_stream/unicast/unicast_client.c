@@ -786,7 +786,7 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	if (((new_pres_dly_us != stream->qos->pd) &&
 	     le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED)) ||
 	    group_reconfigure_needed) {
-		LOG_WRN("Incoming PD: %d, us prev group PD: %d us, new PD %d us", stream->qos->pd,
+		LOG_DBG("Incoming PD: %d, us prev group PD: %d us, new PD %d us", stream->qos->pd,
 			existing_pres_dly_us, new_pres_dly_us);
 		/* Should stop all running streams to update their presentation delay */
 
@@ -1091,7 +1091,37 @@ int unicast_client_config_get(struct bt_bap_stream *stream, uint32_t *bitrate,
 
 void unicast_client_conn_disconnected(struct bt_conn *conn)
 {
-	/* Do nothing for now */
+	int ret;
+	ret = srv_store_lock(CAP_PROCED_SEM_WAIT_TIME_MS);
+	if (ret < 0) {
+		LOG_ERR("%s: Failed to lock server store: %d", __func__, ret);
+		return;
+	}
+
+	struct server_store *server = NULL;
+
+	ret = srv_store_from_conn_get(conn, &server);
+	if (ret) {
+		LOG_ERR("%s: Unknown connection, should not reach here", __func__);
+		srv_store_unlock();
+		return;
+	}
+
+	/* Reset the server store */
+	server->snk.num_eps = 0;
+	server->src.num_eps = 0;
+	memset(&server->snk.lc3_preset, 0, sizeof(server->snk.lc3_preset));
+	memset(&server->src.lc3_preset, 0, sizeof(server->src.lc3_preset));
+	server->snk.eps[0] = NULL;
+	server->src.eps[0] = NULL;
+	server->snk.waiting_for_disc = false;
+	server->src.waiting_for_disc = false;
+	server->snk.locations = 0;
+	server->src.locations = 0;
+	server->snk.num_codec_caps = 0;
+	server->src.num_codec_caps = 0;
+
+	srv_store_unlock();
 }
 
 int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
@@ -1112,24 +1142,9 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 		ret = srv_store_from_conn_get(conn, &server);
 		if (ret) {
 			LOG_ERR("%s: Unknown connection, should not reach here", __func__);
-			;
 			srv_store_unlock();
 			return ret;
 		}
-
-		/* Reset the server store before discovery */
-		server->snk.num_eps = 0;
-		server->src.num_eps = 0;
-		memset(&server->snk.lc3_preset, 0, sizeof(server->snk.lc3_preset));
-		memset(&server->src.lc3_preset, 0, sizeof(server->src.lc3_preset));
-		server->snk.eps[0] = NULL;
-		server->src.eps[0] = NULL;
-		server->snk.waiting_for_disc = false;
-		server->src.waiting_for_disc = false;
-		server->snk.locations = 0;
-		server->src.locations = 0;
-		server->snk.num_codec_caps = 0;
-		server->src.num_codec_caps = 0;
 
 	} else if (ret) {
 		LOG_ERR("Failed to add server store for conn: %p, err: %d", (void *)conn, ret);
@@ -1139,7 +1154,6 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 		ret = srv_store_from_conn_get(conn, &server);
 		if (ret) {
 			LOG_ERR("%s: Unknown connection, should not reach here", __func__);
-			;
 			srv_store_unlock();
 			return ret;
 		}
@@ -1193,10 +1207,9 @@ int unicast_client_start(uint8_t cig_index)
 	int ret;
 
 	ret = k_sem_take(&sem_cap_procedure_proceed, CAP_PROCED_SEM_WAIT_TIME_MS);
-	if (ret == -EAGAIN) {
-		LOG_WRN("CAP procedure lock timeout, putting start on queue");
-		k_work_submit(&cap_start_work);
-		return 0;
+	if (ret) {
+		LOG_ERR("Failed to take sem_cap_procedure_proceed: %d", ret);
+		return ret;
 	}
 
 	/* Start all unicast_servers with valid endpoints */
@@ -1228,19 +1241,7 @@ int unicast_client_start(uint8_t cig_index)
 			continue;
 		}
 
-		struct bt_conn_info info;
-		ret = bt_conn_get_info(server->conn, &info);
-		if (ret) {
-			LOG_ERR("Failed to get connection info for conn: %p", (void *)server->conn);
-			continue;
-		}
-
-		if (info.state != BT_CONN_STATE_CONNECTED) {
-			LOG_WRN("Connection %p is not connected, skipping start",
-				(void *)server->conn);
-			continue;
-		}
-
+		/* Check if we have valid sink endpoints to start */
 		if (server->snk.num_eps > 0) {
 			for (int j = 0; j < server->snk.num_eps; j++) {
 				ret = le_audio_ep_state_get(server->snk.eps[j], &state);
@@ -1259,6 +1260,7 @@ int unicast_client_start(uint8_t cig_index)
 			}
 		}
 
+		/* Check if we have valid source endpoints to start */
 		if (server->src.num_eps > 0) {
 			for (int j = 0; j < server->src.num_eps; j++) {
 				ret = le_audio_ep_state_get(server->src.eps[j], &state);
