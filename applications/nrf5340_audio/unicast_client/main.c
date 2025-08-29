@@ -425,7 +425,7 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 		if (!bt_addr_le_is_identity(&msg->addr)) {
 			/* If this is the case, we wait for ID resolution.*/
 			/* TODO: Double check this func with Herman*/
-			LOG_INF("Security changed. Addr not resolved");
+			LOG_DBG("Security changed. Addr not resolved");
 			return;
 		}
 		LOG_INF("Security changed. Addr is resolved");
@@ -434,7 +434,7 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 		break;
 	case BT_MGMT_IDENTITY_RESOLVED:
-		LOG_INF("Identity resolved");
+		LOG_DBG("Identity resolved");
 		discovery_process_start(msg->conn);
 		break;
 

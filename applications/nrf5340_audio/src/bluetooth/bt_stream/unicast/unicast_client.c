@@ -786,19 +786,16 @@ static void stream_configured_cb(struct bt_bap_stream *stream,
 	if (((new_pres_dly_us != stream->qos->pd) &&
 	     le_audio_ep_state_check(stream->ep, BT_BAP_EP_STATE_CODEC_CONFIGURED)) ||
 	    group_reconfigure_needed) {
-		LOG_DBG("Incoming PD: %d, us prev group PD: %d us, new PD %d us", stream->qos->pd,
+		LOG_INF("Stream QoS PD: %d, prev group PD: %d, new PD %d", stream->qos->pd,
 			existing_pres_dly_us, new_pres_dly_us);
-		/* Should stop all running streams to update their presentation delay */
+		/* Should stop all running streams to update all streams in group */
 
-		/* update all streams in group */
 		struct bt_bap_stream *stream_element;
 
 		SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream_element, _node) {
 			stream_element->qos->pd = new_pres_dly_us;
-			LOG_WRN("PD set to %d us ", new_pres_dly_us);
+			LOG_DBG("PD set to %d us ", new_pres_dly_us);
 		}
-
-		LOG_WRN("iteratior done");
 	}
 
 	le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED, stream->conn, stream, dir);
