@@ -1112,12 +1112,20 @@ int unicast_client_discover(struct bt_conn *conn, enum unicast_discover_dir dir)
 			return ret;
 		}
 
-		memset(&server->snk, 0, sizeof(server->snk));
-		memset(&server->src, 0, sizeof(server->src));
 		memset(&server->snk.eps, 0, sizeof(server->snk.eps));
 		memset(&server->src.eps, 0, sizeof(server->src.eps));
 		memset(&server->snk.lc3_preset, 0, sizeof(server->snk.lc3_preset));
 		memset(&server->src.lc3_preset, 0, sizeof(server->src.lc3_preset));
+		memset(&server->snk.codec_caps, 0, sizeof(server->snk.codec_caps));
+		memset(&server->src.codec_caps, 0, sizeof(server->src.codec_caps));
+		server->snk.num_codec_caps = 0;
+		server->src.num_codec_caps = 0;
+		server->snk.num_eps = 0;
+		server->src.num_eps = 0;
+		server->snk.locations = 0;
+		server->src.locations = 0;
+		server->snk.waiting_for_disc = false;
+		server->src.waiting_for_disc = false;
 
 	} else if (ret) {
 		LOG_ERR("Failed to add server store for conn: %p, err: %d", (void *)conn, ret);
@@ -1266,6 +1274,9 @@ int unicast_client_start(uint8_t cig_index)
 		k_work_submit(&cap_start_work);
 	} else if (ret) {
 		LOG_ERR("Failed to start unicast sink audio: %d", ret);
+		k_sem_give(&sem_cap_procedure_proceed);
+		srv_store_unlock(__func__);
+		return ret;
 	}
 
 	playing_state = true;
@@ -1283,7 +1294,11 @@ int unicast_client_stop(uint8_t cig_index)
 				      CONFIG_BT_MAX_CONN];
 	static struct bt_cap_unicast_audio_stop_param param;
 
-	k_sem_take(&sem_cap_procedure_proceed, K_FOREVER);
+	ret = k_sem_take(&sem_cap_procedure_proceed, K_FOREVER);
+	if (ret) {
+		LOG_ERR("Failed to take sem_cap_procedure_proceed: %d", ret);
+		return ret;
+	}
 
 	if (cig_index >= CONFIG_BT_ISO_MAX_CIG) {
 		LOG_ERR("Trying to stop CIG %d out of %d", cig_index, CONFIG_BT_ISO_MAX_CIG);
