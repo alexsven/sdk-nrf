@@ -263,20 +263,22 @@ int srv_store_remove_all(void);
 /**
  * @brief Lock/take the server store semaphore.
  *
- * @param timeout Waiting period to take the semaphore,
- *                or one of the special values K_NO_WAIT and K_FOREVER.
+ * @param timeout	Waiting period to take the semaphore,
+ *			or one of the special values K_NO_WAIT and K_FOREVER.
+ * @param str		String to log the lock source.
  *
  * @retval 0 lock taken. One can now operate on the server store.
  * @retval -EBUSY Returned without waiting.
- * @retval -EAGAIN Waiting period timed out,
- *			or the semaphore was reset during the waiting period.
+ * @retval -EAGAIN Waiting period timed out, or the semaphore was reset during the waiting period.
  */
-int srv_store_lock(k_timeout_t timeout);
+int srv_store_lock(k_timeout_t timeout, char const *const str);
 
 /**
  * @brief Unlock/give the server store semaphore.
+ *
+ * @param str String to log the unlock source.
  */
-void srv_store_unlock(void);
+void srv_store_unlock(char const *const str);
 
 /**
  * @brief	Initializes the server store and clears all contents.

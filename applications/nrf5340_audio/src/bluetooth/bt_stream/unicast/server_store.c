@@ -668,7 +668,7 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 	}
 	/* Only the sampling frequency is checked */
 	if (dir == BT_AUDIO_DIR_SINK) {
-		LOG_INF("Discovered %d sink endpoint(s) for device", server->snk.num_eps);
+		LOG_DBG("Discovered %d sink endpoint(s) for device", server->snk.num_eps);
 
 		for (int i = 0; i < server->snk.num_codec_caps; i++) {
 			struct bt_bap_lc3_preset *preset = NULL;
@@ -693,7 +693,7 @@ int srv_store_valid_codec_cap_check(struct bt_conn const *const conn, enum bt_au
 			}
 		}
 	} else if (dir == BT_AUDIO_DIR_SOURCE) {
-		LOG_INF("Discovered %d source endpoint(s) for device", server->src.num_eps);
+		LOG_DBG("Discovered %d source endpoint(s) for device", server->src.num_eps);
 
 		for (int i = 0; i < server->src.num_codec_caps; i++) {
 			struct bt_bap_lc3_preset *preset = NULL;
@@ -1082,24 +1082,32 @@ int srv_store_remove_all(void)
 	return 0;
 }
 
-int srv_store_lock(k_timeout_t timeout)
+int srv_store_lock(k_timeout_t timeout, char const *const str)
 {
 	int ret;
+
+	static char *prev_str;
+
+	LOG_DBG("Locking srv_store, from %s", str);
 
 	ret = k_sem_take(&sem, timeout);
 	if (ret) {
 		LOG_ERR("Failed to take semaphore, error: %d", ret);
+		LOG_ERR("Previous lock taken from: %s", prev_str);
 		return ret;
 	}
 
 	atomic_ptr_set(&lock_owner, k_current_get());
+	prev_str = (char *)str;
 
 	return 0;
 }
 
-void srv_store_unlock(void)
+void srv_store_unlock(char const *const str)
 {
 	valid_entry_check(__func__);
+
+	LOG_DBG("Unlocking srv_store, from %s", str);
 
 	atomic_ptr_set(&lock_owner, NULL);
 	k_sem_give(&sem);
