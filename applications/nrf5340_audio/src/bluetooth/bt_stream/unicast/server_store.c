@@ -515,7 +515,7 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 
 		switch (dir) {
 		case BT_AUDIO_DIR_SINK:
-			for (int i = 0; i < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT; i++) {
+			for (int i = 0; i < server->snk.num_eps; i++) {
 
 				if (pres_dly_ignore_stream(&server->snk.cap_streams[i].bap_stream,
 							   stream)) {
@@ -547,7 +547,7 @@ int srv_store_pres_dly_find(struct bt_bap_stream *stream, uint32_t *computed_pre
 			break;
 
 		case BT_AUDIO_DIR_SOURCE:
-			for (int i = 0; i < CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT; i++) {
+			for (int i = 0; i < server->src.num_eps; i++) {
 				if (pres_dly_ignore_stream(&server->snk.cap_streams[i].bap_stream,
 							   stream)) {
 					continue;

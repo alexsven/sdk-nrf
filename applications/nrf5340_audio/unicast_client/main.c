@@ -419,7 +419,8 @@ static void bt_mgmt_evt_handler(const struct zbus_channel *chan)
 
 	case BT_MGMT_SECURITY_CHANGED:
 		if (BT_ADDR_IS_NRPA(&msg->addr.a)) {
-			ERR_CHK_MSG(-EINVAL, "Non-resolvable private not supported by application");
+			// ERR_CHK_MSG(-EINVAL, "Non-resolvable private not supported by
+			// application");
 		}
 
 		if (!bt_addr_le_is_identity(&msg->addr)) {

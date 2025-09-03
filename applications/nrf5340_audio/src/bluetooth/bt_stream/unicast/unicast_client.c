@@ -69,6 +69,19 @@ static void le_audio_event_publish(enum le_audio_evt_type event, struct bt_conn 
 	ERR_CHK(ret);
 }
 
+// static int current_num_src_streams_get(void)
+// {
+// 	uint8_t source_num = 0;
+// 	struct bt_bap_stream *stream_element;
+
+// 	SYS_SLIST_FOR_EACH_CONTAINER(&unicast_group->streams, stream_element, _node) {
+// 		if (le_audio_stream_dir_get(stream_element) == BT_AUDIO_DIR_SOURCE) {
+// 			source_num++;
+// 		}
+// 	}
+// 	return source_num;
+// }
+
 static void stream_idx_get(struct bt_bap_stream *stream, struct stream_index *idx)
 {
 	int ret;
@@ -153,7 +166,8 @@ static void create_group(void)
 		}
 
 		/* Add only the streams that has a valid preset set */
-		for (int j = 0; j < tmp_server->snk.num_eps; j++) {
+		for (int j = 0;
+		     j < MIN(tmp_server->snk.num_eps, POPCOUNT(tmp_server->snk.locations)); j++) {
 			if (tmp_server->snk.lc3_preset[j].qos.pd == 0) {
 				LOG_DBG("Sink EP %d has no valid preset, skipping", j);
 				continue;
@@ -879,7 +893,7 @@ static void stream_released_cb(struct bt_bap_stream *stream)
 {
 	int ret;
 
-	LOG_DBG("Audio Stream %p released", (void *)stream);
+	LOG_INF("Audio Stream %p released", (void *)stream);
 
 	/* Check if unicast_group_recreate has been requested */
 	if (unicast_group_created == false) {
@@ -923,6 +937,8 @@ static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_rec
 		LOG_ERR("Failed to populate meta data: %d", ret);
 		return;
 	}
+
+	// if (current_num_src_streams_get() == 1)
 
 	struct stream_index idx;
 
@@ -1224,7 +1240,8 @@ int unicast_client_start(uint8_t cig_index)
 
 		/* Check if we have valid sink endpoints to start */
 		if (server->snk.num_eps > 0) {
-			for (int j = 0; j < server->snk.num_eps; j++) {
+			for (int j = 0;
+			     j < MIN(server->snk.num_eps, POPCOUNT(server->snk.locations)); j++) {
 				ret = le_audio_ep_state_get(server->snk.eps[j], &state);
 				if (state == BT_BAP_EP_STATE_STREAMING) {
 					LOG_DBG("Sink endpoint is already streaming, skipping "
@@ -1332,7 +1349,8 @@ int unicast_client_stop(uint8_t cig_index)
 		}
 
 		if (server->snk.num_eps > 0) {
-			for (int j = 0; j < server->snk.num_eps; j++) {
+			for (int j = 0;
+			     j < MIN(server->snk.num_eps, POPCOUNT(server->snk.locations)); j++) {
 				ret = le_audio_ep_state_get(server->snk.eps[j], &state);
 				if (state != BT_BAP_EP_STATE_STREAMING) {
 					LOG_DBG("Sink endpoint is not streaming, skipping stop");
