@@ -216,13 +216,13 @@ ZTEST(suite_server_store, test_srv_remove)
 	ret = srv_store_num_get(true);
 	zassert_equal(ret, 3, "Number of servers should be three after adding three servers");
 
-	ret = srv_store_remove(&test_2_conn);
+	ret = srv_store_remove_by_conn(&test_2_conn);
 	zassert_equal(ret, 0, "Removing server by connection did not return zero");
 
 	ret = srv_store_num_get(true);
 	zassert_equal(ret, 2, "Number of servers should be two after removing one");
 
-	ret = srv_store_remove(&test_100_conn);
+	ret = srv_store_remove_by_conn(&test_100_conn);
 	zassert_equal(ret, 0, "Removing server by connection did not return zero");
 
 	/* Test with creating a gap in server store. */
