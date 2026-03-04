@@ -214,12 +214,12 @@ Matter bridge
 
 |no_changes_yet_note|
 
-nRF5340 Audio
--------------
+nRF Audio
+---------
 
 * Added the :kconfig:option:`CONFIG_BT_AUDIO_BROADCAST_BASE_PRINT` kconfig option to print the contents of the BASE when it is received.
   This option is useful for debugging purposes.
-  It is only valid for the :ref:`broadcast sink application <nrf53_audio_broadcast_sink_app>`.
+  It is only valid for the :ref:`broadcast sink application <nrf_audio_broadcast_sink_app>`.
 
 nRF Desktop
 -----------
