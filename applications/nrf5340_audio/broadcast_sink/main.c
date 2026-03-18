@@ -343,6 +343,11 @@ static void bt_mgmt_msg_sub_thread(void)
 			LOG_DBG("Security changed");
 			break;
 
+		case BT_MGMT_PAIRING_COMPLETE:
+			/* If this device is a scan delegator */
+			LOG_DBG("Pairing complete");
+			break;
+
 		case BT_MGMT_PA_SYNCED:
 			LOG_DBG("PA synced");
 
