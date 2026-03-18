@@ -37,7 +37,6 @@ static int owner_line;
 
 static void valid_entry_check(char const *const str)
 {
-	LOG_DBG("Stored: %p current: %p", atomic_ptr_get(&lock_owner), k_current_get());
 	__ASSERT(k_sem_count_get(&sem) == 0, "%s: Semaphore not taken", str);
 	__ASSERT(atomic_ptr_get(&lock_owner) == k_current_get(), "%s: Thread mismatch", str);
 }
@@ -1499,9 +1498,6 @@ int _srv_store_lock(k_timeout_t timeout, const char *file, int line)
 void srv_store_unlock(void)
 {
 	valid_entry_check(__func__);
-
-	LOG_DBG("Unlocking srv_store");
-
 	atomic_ptr_set(&lock_owner, NULL);
 #if CONFIG_DEBUG
 	owner_line = -1;

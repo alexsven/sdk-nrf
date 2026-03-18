@@ -144,6 +144,10 @@ static void button_msg_sub_thread(void)
 				break;
 			}
 
+			if (IS_ENABLED(CONFIG_BT_AUDIO_SCAN_DELEGATOR)) {
+				break;
+			}
+
 			ret = broadcast_sink_disable();
 			if (ret) {
 				LOG_ERR("Failed to disable the broadcast sink: %d", ret);
