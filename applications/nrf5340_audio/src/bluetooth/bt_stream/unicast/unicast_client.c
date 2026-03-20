@@ -1216,8 +1216,12 @@ static void unicast_discovery_complete_cb(struct bt_conn *conn, int err,
 		return;
 	}
 
-	if (err || csis_inst == NULL) {
+	if (err) {
 		LOG_WRN("Got err: %d from conn: %p", err, (void *)conn);
+		msg.set_size = 0;
+		msg.sirk = NULL;
+	} else if (csis_inst == NULL) {
+		LOG_WRN("csis_inst is NULL from conn: %p", (void *)conn);
 		msg.set_size = 0;
 		msg.sirk = NULL;
 	} else {
@@ -1619,7 +1623,7 @@ int unicast_client_start(uint8_t cig_index)
 	}
 
 	if (unicast_group == NULL) {
-		LOG_WRN("No unicast group to start");
+		LOG_INF("No unicast group to start");
 		k_sem_give(&sem_cap_procedure_proceed);
 		return -EIO;
 	}
