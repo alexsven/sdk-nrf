@@ -202,7 +202,7 @@ static bool print_base_subgroup_bis_cb(const struct bt_bap_base_subgroup_bis *bi
 		LOG_DBG("\t\t\tBIS %d: Mono", info->bis_index);
 	} else {
 		for (size_t i = 0; i < 32; i++) {
-			const uint8_t bit_val = BIT(i);
+			uint32_t bit_val = BIT(i);
 
 			if (chan_allocation & bit_val) {
 				LOG_DBG("\t\t\tBIS %d: %s", info->bis_index,
@@ -300,7 +300,7 @@ static bool print_base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, 
 			dut.subgroups[info.sub_index].context = ret;
 			/* Iterate through the context bits */
 			for (size_t i = 0U; i < 16; i++) {
-				const uint16_t bit_val = BIT(i);
+				uint16_t bit_val = BIT(i);
 
 				if (ret & bit_val) {
 					LOG_DBG("\t\tContext: %s",

@@ -265,6 +265,11 @@ config BT_AUDIO_BROADCAST_ZBUS_EVT_STREAM_SENT
 	  be prepared. As this event will trigger once for each frame it will cause significant
 	  overhead, even if the event is not used.
 
+config BT_AUDIO_BROADCAST_BASE_PRINT
+	bool "Print BASE information"
+	help
+	  Print the contents of the BASE when received. This is useful for debugging purposes.
+
 #----------------------------------------------------------------------------#
 menu "Log levels"
 

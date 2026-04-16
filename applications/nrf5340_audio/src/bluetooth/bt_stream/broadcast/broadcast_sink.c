@@ -47,6 +47,12 @@ struct audio_codec_info {
 	uint32_t pd;
 };
 
+struct stream_info {
+	struct bt_bap_base_codec_id codec_id;
+	uint8_t subgroup_index;
+	uint8_t bis_index;
+};
+
 static struct bt_bap_broadcast_sink *broadcast_sink;
 static struct bt_bap_stream audio_streams[CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT];
 static struct bt_bap_stream *audio_streams_p[ARRAY_SIZE(audio_streams)];
@@ -71,6 +77,7 @@ static struct bt_pacs_cap capabilities = {
 };
 
 #define AVAILABLE_SINK_CONTEXT (BT_AUDIO_CONTEXT_TYPE_ANY)
+#define PROGRAM_INFO_MAX_LEN   256
 
 static le_audio_receive_cb receive_cb;
 
@@ -125,66 +132,6 @@ struct bt_csip_set_member_register_param csip_param = {
 	.lockable = true,
 	.cb = &csip_callbacks,
 };
-
-int broadcast_sink_uuid_populate(struct net_buf_simple *uuid_buf)
-{
-	if (net_buf_simple_tailroom(uuid_buf) >= (BT_UUID_SIZE_16 * 3)) {
-		net_buf_simple_add_le16(uuid_buf, BT_UUID_BASS_VAL);
-		net_buf_simple_add_le16(uuid_buf, BT_UUID_PACS_VAL);
-	} else {
-		LOG_ERR("Not enough space for UUIDS");
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
-int broadcast_sink_adv_populate(struct bt_data *adv_buf, uint8_t adv_buf_vacant)
-{
-	int ret;
-	uint32_t adv_buf_cnt = 0;
-
-	if (IS_ENABLED(CONFIG_BT_CSIP_SET_MEMBER)) {
-		ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
-					     sizeof(csip_rsi_adv_data), BT_DATA_CSIS_RSI,
-					     (void *)csip_rsi_adv_data);
-		if (ret) {
-			return ret;
-		}
-	}
-
-	/*
-	 * AD format required for broadcast sink with scan delegator.
-	 * Details can be found in Basic Audio Profile Section 3.9.2.
-	 */
-	sys_put_le16(BT_UUID_BASS_VAL, &bass_service_uuid[0]);
-
-	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
-				     sizeof(bass_service_uuid), BT_DATA_SVC_DATA16,
-				     (void *)bass_service_uuid);
-	if (ret) {
-		return ret;
-	}
-
-	sys_put_le16(CONFIG_BT_DEVICE_APPEARANCE, &gap_appear_adv_data[0]);
-
-	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
-				     sizeof(gap_appear_adv_data), BT_DATA_GAP_APPEARANCE,
-				     (void *)gap_appear_adv_data);
-	if (ret) {
-		return ret;
-	}
-
-	flags_adv_data = BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR;
-
-	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant, sizeof(uint8_t),
-				     BT_DATA_FLAGS, (void *)&flags_adv_data);
-	if (ret) {
-		return ret;
-	}
-
-	return adv_buf_cnt;
-}
 
 static int broadcast_sink_cleanup(void)
 {
@@ -437,6 +384,7 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 	LOG_DBG("Subgroup %p has %d BISes", (void *)subgroup, bis_num);
 	if (bis_num > 0) {
 		*suitable_stream_found = true;
+
 		for (int i = 0; i < bis_num; i++) {
 			get_codec_info(&codec_cfg, &audio_codec_info[i]);
 			audio_codec_info[i].id = codec_id.id;
@@ -448,10 +396,209 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 		if (ret < 0) {
 			LOG_WRN("Could not get BIS for subgroup %p: %d", (void *)subgroup, ret);
 		}
+
 		return false;
 	}
 
 	return true;
+}
+
+static bool base_print_subgroup_per_bis_cb(const struct bt_bap_base_subgroup_bis *bis,
+					   void *user_data)
+{
+	int ret;
+	struct stream_info *info = user_data;
+	enum bt_audio_location chan_allocation;
+
+	struct bt_audio_codec_cfg codec_cfg = {
+		.id = info->codec_id.id,
+		.cid = info->codec_id.cid,
+		.vid = info->codec_id.vid,
+	};
+
+	ret = bt_bap_base_subgroup_bis_codec_to_codec_cfg(bis, &codec_cfg);
+	if (ret < 0) {
+		LOG_WRN("Failed to convert codec to codec_cfg: %d", ret);
+		return false;
+	}
+
+	ret = bt_audio_codec_cfg_get_chan_allocation(&codec_cfg, &chan_allocation, false);
+	if (ret < 0) {
+		LOG_WRN("Failed to get channel allocation: %d", ret);
+		return false;
+	}
+
+	if (chan_allocation == BT_AUDIO_LOCATION_MONO_AUDIO) {
+		LOG_INF("\t\t\tBIS %d: Mono", info->bis_index);
+	} else {
+		for (size_t i = 0; i < 32; i++) {
+			uint32_t bit_val = BIT(i);
+
+			if (chan_allocation & bit_val) {
+				LOG_INF("\t\t\tBIS %d: %s", info->bis_index,
+					bt_audio_location_bit_to_str(bit_val));
+			}
+		}
+	}
+
+	info->bis_index += 1;
+
+	return true;
+}
+
+static bool base_print_per_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *user_data)
+{
+	int ret;
+	struct bt_bap_base_codec_id codec_id;
+	struct bt_audio_codec_cfg codec_cfg;
+	uint8_t *subgroup_index = user_data;
+
+	LOG_INF("Subgroup: %d", *subgroup_index);
+
+	ret = bt_bap_base_get_subgroup_codec_id(subgroup, &codec_id);
+	if (ret < 0) {
+		return false;
+	}
+
+	struct stream_info info = {
+		.codec_id = codec_id,
+		.subgroup_index = *subgroup_index,
+		.bis_index = 0,
+	};
+
+	ret = bt_bap_base_subgroup_codec_to_codec_cfg(subgroup, &codec_cfg);
+	if (ret != 0) {
+		LOG_WRN("Failed to convert codec to codec_cfg: %d", ret);
+		return false;
+	}
+
+	LOG_INF("\tCodec specific configuration:");
+
+	if (codec_cfg.data_len == 0U) {
+		LOG_INF("\t\tNone");
+	} else if (codec_cfg.id == BT_HCI_CODING_FORMAT_LC3) {
+		int ret;
+
+		ret = bt_audio_codec_cfg_get_freq(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tSampling rate: %u Hz",
+				bt_audio_codec_cfg_freq_to_freq_hz(ret));
+		} else {
+			LOG_WRN("Failed to get frequency: %d", ret);
+		}
+
+		ret = bt_audio_codec_cfg_get_frame_dur(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tFrame duration: %u us",
+				bt_audio_codec_cfg_frame_dur_to_frame_dur_us(ret));
+		} else {
+			LOG_WRN("Failed to get frame duration: %d", ret);
+		}
+
+		ret = bt_audio_codec_cfg_get_octets_per_frame(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tOctets per frame: %u", (uint16_t)ret);
+		} else {
+			LOG_WRN("Failed to get octets per frame: %d", ret);
+		}
+
+		ret = bt_bap_base_get_subgroup_bis_count(subgroup);
+		if (ret >= 0) {
+			LOG_INF("\t\tNumber of BISes: %u", (uint8_t)ret);
+		} else {
+			LOG_WRN("Failed to get number of BISes: %d", ret);
+		}
+
+		LOG_INF("\t\tLocation:");
+		ret = bt_bap_base_subgroup_foreach_bis(subgroup, base_print_subgroup_per_bis_cb,
+						       &info);
+		if (ret < 0) {
+			return false;
+		}
+
+	} else {
+		LOG_INF("\t\tUnsupported codec");
+	}
+
+	LOG_INF("\tCodec specific metadata:");
+
+	if (codec_cfg.meta_len == 0U) {
+		LOG_INF("\tNone");
+	} else {
+		const uint8_t *data;
+
+		ret = bt_audio_codec_cfg_meta_get_stream_context(&codec_cfg);
+		if (ret >= 0) {
+			/* Iterate through the context bits */
+			for (size_t i = 0U; i < 16; i++) {
+				uint16_t bit_val = BIT(i);
+
+				if (ret & bit_val) {
+					LOG_INF("\t\tContext: %s",
+						bt_audio_context_bit_to_str(bit_val));
+				}
+			}
+		}
+
+		ret = bt_audio_codec_cfg_meta_get_program_info(&codec_cfg, &data);
+		if (ret >= 0) {
+			char program_info[PROGRAM_INFO_MAX_LEN] = {'\0'};
+			int meta_len = ret;
+
+			if (meta_len > PROGRAM_INFO_MAX_LEN) {
+				meta_len = PROGRAM_INFO_MAX_LEN - 1;
+				LOG_WRN("Program info length %d exceeds max, truncating. Note that "
+					"this is non-spec compliant behavior: %d. Program info can "
+					"be up to 255 bytes long according to the spec, but only "
+					"%d bytes will be printed",
+					ret, meta_len, PROGRAM_INFO_MAX_LEN - 1);
+			}
+
+			memcpy(program_info, data, meta_len);
+			LOG_INF("\t\tProgram info: %s", program_info);
+		}
+
+		const uint8_t *lang;
+
+		ret = bt_audio_codec_cfg_meta_get_lang(&codec_cfg, &lang);
+		if (ret == 0) {
+			LOG_INF("\t\tLanguage: %c%c%c", (char)lang[0], (char)lang[1],
+				(char)lang[2]);
+		}
+
+		ret = bt_audio_codec_cfg_meta_get_parental_rating(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tParental rating: %s", bt_audio_parental_rating_to_str(ret));
+		}
+
+		ret = bt_audio_codec_cfg_meta_get_audio_active_state(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tAudio active state: %s",
+				ret == BT_AUDIO_ACTIVE_STATE_ENABLED ? "enabled" : "disabled");
+		}
+
+		ret = bt_audio_codec_cfg_meta_get_bcast_audio_immediate_rend_flag(&codec_cfg);
+		if (ret >= 0) {
+			LOG_INF("\t\tImmediate rendering flag: %s",
+				ret == 0 ? "enabled" : "disabled");
+		}
+	}
+
+	*subgroup_index += 1;
+
+	return true;
+}
+
+static void base_print(struct bt_bap_broadcast_sink *sink, const struct bt_bap_base *base)
+{
+	int ret;
+
+	uint8_t subgroup_index = 0;
+
+	ret = bt_bap_base_foreach_subgroup(base, base_print_per_subgroup_cb, &subgroup_index);
+	if (ret < 0) {
+		LOG_DBG("Invalid BASE: %d", ret);
+	}
 }
 
 static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap_base *base,
@@ -489,6 +636,10 @@ static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap
 		}
 		le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED);
 
+		if (IS_ENABLED(CONFIG_BT_AUDIO_BROADCAST_BASE_PRINT)) {
+			base_print(sink, base);
+		}
+
 		LOG_DBG("Waiting for syncable");
 	} else {
 		LOG_DBG("Found no suitable stream");
@@ -511,6 +662,12 @@ static void syncable_cb(struct bt_bap_broadcast_sink *sink, const struct bt_iso_
 	if (bis_index_bitfield == 0) {
 		LOG_ERR("No bits set in bitfield");
 		return;
+	}
+
+	if (biginfo->encryption == true) {
+		LOG_INF("BIG is encrypted");
+	} else {
+		LOG_INF("BIG is not encrypted");
 	}
 
 	/* NOTE: The string below is used by the Nordic CI system */
@@ -563,6 +720,66 @@ static struct bt_bap_broadcast_sink_cb broadcast_sink_cbs = {
 	.base_recv = base_recv_cb,
 	.syncable = syncable_cb,
 };
+
+int broadcast_sink_uuid_populate(struct net_buf_simple *uuid_buf)
+{
+	if (net_buf_simple_tailroom(uuid_buf) >= (BT_UUID_SIZE_16 * 3)) {
+		net_buf_simple_add_le16(uuid_buf, BT_UUID_BASS_VAL);
+		net_buf_simple_add_le16(uuid_buf, BT_UUID_PACS_VAL);
+	} else {
+		LOG_ERR("Not enough space for UUIDS");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+int broadcast_sink_adv_populate(struct bt_data *adv_buf, uint8_t adv_buf_vacant)
+{
+	int ret;
+	uint32_t adv_buf_cnt = 0;
+
+	if (IS_ENABLED(CONFIG_BT_CSIP_SET_MEMBER)) {
+		ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
+					     sizeof(csip_rsi_adv_data), BT_DATA_CSIS_RSI,
+					     (void *)csip_rsi_adv_data);
+		if (ret) {
+			return ret;
+		}
+	}
+
+	/*
+	 * AD format required for broadcast sink with scan delegator.
+	 * Details can be found in Basic Audio Profile Section 3.9.2.
+	 */
+	sys_put_le16(BT_UUID_BASS_VAL, &bass_service_uuid[0]);
+
+	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
+				     sizeof(bass_service_uuid), BT_DATA_SVC_DATA16,
+				     (void *)bass_service_uuid);
+	if (ret) {
+		return ret;
+	}
+
+	sys_put_le16(CONFIG_BT_DEVICE_APPEARANCE, &gap_appear_adv_data[0]);
+
+	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant,
+				     sizeof(gap_appear_adv_data), BT_DATA_GAP_APPEARANCE,
+				     (void *)gap_appear_adv_data);
+	if (ret) {
+		return ret;
+	}
+
+	flags_adv_data = BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR;
+
+	ret = bt_mgmt_adv_buffer_put(adv_buf, &adv_buf_cnt, adv_buf_vacant, sizeof(uint8_t),
+				     BT_DATA_FLAGS, (void *)&flags_adv_data);
+	if (ret) {
+		return ret;
+	}
+
+	return adv_buf_cnt;
+}
 
 int le_audio_concurrent_sync_num_get(uint8_t *num_streams, enum bt_audio_location *locations)
 {
