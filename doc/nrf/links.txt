@@ -144,6 +144,7 @@
 .. _`LICENSE file`: https://github.com/nrfconnect/sdk-nrf/blob/main/LICENSE
 
 .. _`tests/unity/example_test/CMakeLists.txt`: https://github.com/nrfconnect/sdk-nrf/blob/main/tests/unity/example_test/CMakeLists.txt
+.. _`TF-M: Regression tests`: https://github.com/nrfconnect/sdk-nrf/tree/main/tests/zephyr/modules/tf-m/regression
 
 .. _`OpenThread CLI Reference`: https://github.com/openthread/openthread/blob/main/src/cli/README.md
 .. _`OpenThread CLI Reference - csl command`: https://github.com/openthread/openthread/blob/main/src/cli/README.md#csl
