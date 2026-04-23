@@ -206,7 +206,7 @@ int le_audio_bitrate_get(const struct bt_audio_codec_cfg *const codec, uint32_t 
 		return ret;
 	}
 
-	int frames_per_sec = 1000000 / dur_us;
+	float frames_per_sec = (float)USEC_PER_SEC / dur_us;
 	uint32_t octets_per_sdu;
 
 	ret = le_audio_octets_per_frame_get(codec, &octets_per_sdu);

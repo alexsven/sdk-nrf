@@ -22,7 +22,7 @@
 #include <audio_defines.h>
 
 #define LE_AUDIO_ZBUS_EVENT_WAIT_TIME	  K_MSEC(5)
-#define LE_AUDIO_SDU_SIZE_OCTETS(bitrate, dur_us) (bitrate / (1000000 / dur_us) / 8)
+#define LE_AUDIO_SDU_SIZE_OCTETS(bitrate, dur_us) (bitrate / (USEC_PER_SEC / dur_us) / 8)
 
 #if CONFIG_SAMPLE_RATE_CONVERTER && CONFIG_AUDIO_SAMPLE_RATE_48000_HZ
 #define BT_AUDIO_CODEC_CAPABILIY_FREQ                                                              \

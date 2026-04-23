@@ -38,7 +38,7 @@ LOG_MODULE_REGISTER(audio_datapath, CONFIG_AUDIO_DATAPATH_LOG_LEVEL);
  *   - frame: encoded audio packet exchanged with connectivity
  */
 
-#define BLK_PERIOD_US 1000
+#define BLK_PERIOD_US 500
 
 /* Total sample FIFO period in microseconds */
 #define FIFO_CHANNELS_MAX   MAX(CONFIG_AUDIO_INPUT_CHANNELS, CONFIG_AUDIO_OUTPUT_CHANNELS)
@@ -51,7 +51,7 @@ LOG_MODULE_REGISTER(audio_datapath, CONFIG_AUDIO_DATAPATH_LOG_LEVEL);
 #define NUM_BLKS(d) ((d) / BLK_PERIOD_US)
 /* Single audio block size in number of samples */
 /* clang-format off */
-#define BLK_SIZE_SAMPLES(r) (((r)*BLK_PERIOD_US) / 1000000)
+#define BLK_SIZE_SAMPLES(r) (((r)*BLK_PERIOD_US) / USEC_PER_SEC)
 /* clang-format on */
 /* Increment sample FIFO index by one block */
 #define NEXT_IDX(i) (((i) < (FIFO_NUM_BLKS - 1)) ? ((i) + 1) : 0)
@@ -61,6 +61,7 @@ LOG_MODULE_REGISTER(audio_datapath, CONFIG_AUDIO_DATAPATH_LOG_LEVEL);
 #define NUM_BLKS_IN_FRAME	   NUM_BLKS(CONFIG_AUDIO_FRAME_DURATION_US)
 #define BLK_MONO_NUM_SAMPS	   BLK_SIZE_SAMPLES(CONFIG_AUDIO_SAMPLE_RATE_HZ)
 #define BLK_MULTI_CHAN_NUM_SAMPS   (BLK_MONO_NUM_SAMPS * CONFIG_AUDIO_OUTPUT_CHANNELS)
+
 /* Number of octets in a single audio block */
 #define BLK_MONO_SIZE_OCTETS	   (BLK_MONO_NUM_SAMPS * CONFIG_AUDIO_BIT_DEPTH_OCTETS)
 #define BLK_MULTI_CHAN_SIZE_OCTETS (BLK_MULTI_CHAN_NUM_SAMPS * CONFIG_AUDIO_BIT_DEPTH_OCTETS)
@@ -83,7 +84,7 @@ LOG_MODULE_REGISTER(audio_datapath, CONFIG_AUDIO_DATAPATH_LOG_LEVEL);
 #define APLL_FREQ_ADJ(t) (-((t)*1000) / 331)
 /* clang-format on */
 
-#define DRIFT_MEAS_PERIOD_US	   100000
+#define DRIFT_MEAS_PERIOD_US	   150000
 #define DRIFT_ERR_THRESH_LOCK	   16
 #define DRIFT_ERR_THRESH_UNLOCK	   32
 /* To get smaller corrections */
@@ -190,7 +191,7 @@ static int filled_blocks_get(void)
 }
 
 static struct audio_metadata i2s_meta = {.data_coding = PCM,
-					 .data_len_us = 1000,
+					 .data_len_us = BLK_PERIOD_US,
 					 .sample_rate_hz = CONFIG_AUDIO_SAMPLE_RATE_HZ,
 					 .bits_per_sample = CONFIG_AUDIO_BIT_DEPTH_BITS,
 					 .carried_bits_per_sample = CONFIG_AUDIO_BIT_DEPTH_BITS,
@@ -776,7 +777,7 @@ static void audio_datapath_i2s_blk_complete(uint32_t frame_start_ts_us, uint32_t
 		/* Update metadata */
 		struct audio_metadata *meta = net_buf_user_data(i2s_current_frame);
 
-		meta->data_len_us += i2s_meta.data_len_us; /* Each block is 1ms */
+		meta->data_len_us += i2s_meta.data_len_us;
 		meta->bytes_per_location += i2s_meta.bytes_per_location;
 		i2s_blocks_in_current_frame++;
 
@@ -792,7 +793,7 @@ static void audio_datapath_i2s_blk_complete(uint32_t frame_start_ts_us, uint32_t
 				 * queue is ready
 				 */
 				net_buf_remove_mem(i2s_current_frame, BLK_MULTI_CHAN_SIZE_OCTETS);
-				meta->data_len_us -= i2s_meta.data_len_us; /* Each block is 1ms */
+				meta->data_len_us -= i2s_meta.data_len_us;
 				meta->bytes_per_location -= i2s_meta.bytes_per_location;
 				i2s_blocks_in_current_frame--;
 

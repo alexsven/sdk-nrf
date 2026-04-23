@@ -25,10 +25,12 @@
 #include "device_location.h"
 
 #if (CONFIG_SW_CODEC_LC3)
-#define LC3_MAX_FRAME_SIZE_MS	10
-#define LC3_ENC_MONO_FRAME_SIZE (CONFIG_LC3_BITRATE_MAX * LC3_MAX_FRAME_SIZE_MS / (8 * 1000))
+#define LC3_MAX_FRAME_SIZE_US	10000
+#define LC3_ENC_MONO_FRAME_SIZE                                                                    \
+	(CONFIG_LC3_BITRATE_MAX * LC3_MAX_FRAME_SIZE_US / (8 * USEC_PER_SEC))
 #define LC3_PCM_NUM_BYTES_MONO                                                                     \
-	(CONFIG_AUDIO_SAMPLE_RATE_HZ * CONFIG_AUDIO_BIT_DEPTH_OCTETS * LC3_MAX_FRAME_SIZE_MS / 1000)
+	(CONFIG_AUDIO_SAMPLE_RATE_HZ * CONFIG_AUDIO_BIT_DEPTH_OCTETS * LC3_MAX_FRAME_SIZE_US /     \
+	 USEC_PER_SEC)
 #define LC3_ENC_TIME_US 3000
 #define LC3_DEC_TIME_US 1500
 #else

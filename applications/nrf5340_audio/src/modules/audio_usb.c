@@ -38,8 +38,11 @@ K_MEM_SLAB_DEFINE_STATIC(usb_rx_slab, ROUND_UP(USB_BLOCK_SIZE_MULTI_CHAN, UDC_BU
 static struct k_msgq *audio_q_tx;
 static struct k_msgq *audio_q_rx;
 
+/* USB blocks are 1 ms each, but we split them into 0.5 ms blocks for processing,
+ * hence the dividing by two
+ */
 NET_BUF_POOL_FIXED_DEFINE(pool_in, USB_BLOCKS,
-			  (USB_BLOCK_SIZE_MULTI_CHAN * CONFIG_FIFO_FRAME_SPLIT_NUM),
+			  (USB_BLOCK_SIZE_MULTI_CHAN * CONFIG_FIFO_FRAME_SPLIT_NUM / 2),
 			  sizeof(struct audio_metadata), NULL);
 
 static uint32_t rx_num_overruns;
@@ -167,6 +170,21 @@ static void *get_recv_buf_cb(const struct device *dev, uint8_t terminal, uint16_
 	return buf;
 }
 
+static void half_buf_add(struct net_buf *frame, void *data, uint16_t size,
+			 uint32_t *blocks_in_frame)
+{
+	const uint32_t half_data_len_us = usb_in_meta.data_len_us / 2;
+	const uint32_t half_bytes_per_location = usb_in_meta.bytes_per_location / 2;
+
+	net_buf_add_mem(frame, data, size);
+
+	struct audio_metadata *meta = net_buf_user_data(frame);
+
+	meta->data_len_us += half_data_len_us;
+	meta->bytes_per_location += half_bytes_per_location;
+	(*blocks_in_frame)++;
+}
+
 static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, uint16_t size,
 			 void *user_data)
 {
@@ -175,9 +193,11 @@ static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, 
 	ARG_UNUSED(user_data);
 
 	int ret;
-	/* Frame accumulation for 10ms frames */
-	static struct net_buf *current_frame;
-	static uint32_t blocks_in_current_frame;
+	/* Frame accumulation */
+	static struct net_buf *frame_current;
+	static struct net_buf *frame_spillover;
+	static uint32_t blocks_in_frame_current;
+	static uint32_t blocks_in_frame_spillover;
 
 	if (unlikely(buf == NULL)) {
 		LOG_ERR("Received NULL buffer");
@@ -185,13 +205,8 @@ static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, 
 	}
 
 	/* Fast exit conditions */
-	if (unlikely(size == 0 || !playing_state)) {
-		k_mem_slab_free(&usb_rx_slab, buf);
-		return;
-	}
-
-	/* Terminal check */
-	if (unlikely(!(terminal_headset_out_enabled || terminal_headphones_out_enabled))) {
+	if (unlikely(size == 0 || !playing_state) ||
+	    !(terminal_headset_out_enabled || terminal_headphones_out_enabled)) {
 		k_mem_slab_free(&usb_rx_slab, buf);
 		return;
 	}
@@ -204,52 +219,96 @@ static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, 
 	}
 
 	/* Allocate new frame if we don't have one */
-	if (current_frame == NULL) {
-		/* Check space availability */
-		if (unlikely(k_msgq_num_free_get(audio_q_rx) == 0 || pool_in.avail_count == 0)) {
-			goto overrun_cleanup;
+	if (frame_current == NULL) {
+		if (frame_spillover != NULL) {
+			frame_current = frame_spillover;
+			blocks_in_frame_current = blocks_in_frame_spillover;
+			frame_spillover = NULL;
+			blocks_in_frame_spillover = 0;
+		} else {
+			/* Check space availability */
+			if (unlikely(k_msgq_num_free_get(audio_q_rx) == 0 ||
+				     pool_in.avail_count == 0)) {
+				goto overrun_cleanup;
+			}
+
+			frame_current = net_buf_alloc(&pool_in, K_NO_WAIT);
+			if (unlikely(frame_current == NULL)) {
+				LOG_WRN("Out of RX buffers for frame");
+				goto overrun_cleanup;
+			}
+
+			/* Initialize metadata for the first block */
+			struct audio_metadata *meta = net_buf_user_data(frame_current);
+
+			*meta = usb_in_meta;
+			meta->data_len_us = 0;
+			meta->bytes_per_location = 0;
+			blocks_in_frame_current = 0;
+		}
+	}
+
+	/* Check if we are about to spill over, if so: allocate spill_over frame */
+	if ((blocks_in_frame_current + 2) > CONFIG_FIFO_FRAME_SPLIT_NUM) {
+		const size_t half_size = size / 2;
+
+		/* Add half the buffer to current frame */
+		half_buf_add(frame_current, buf, half_size, &blocks_in_frame_current);
+
+		if (frame_spillover != NULL) {
+			LOG_WRN("Previous spillover frame not consumed, dropping it");
+			net_buf_unref(frame_spillover);
+			blocks_in_frame_spillover = 0;
 		}
 
-		current_frame = net_buf_alloc(&pool_in, K_NO_WAIT);
-		if (unlikely(current_frame == NULL)) {
-			LOG_WRN("Out of RX buffers for frame");
+		/* Allocate new frame for spill over data since current frame is full. If allocation
+		 * fails, drop the spill over data to prevent blocking the USB endpoint, but keep
+		 * the current frame to allow it to be sent to the audio system.
+		 */
+		frame_spillover = net_buf_alloc(&pool_in, K_NO_WAIT);
+		if (unlikely(frame_spillover == NULL)) {
+			LOG_WRN("Out of RX buffers for spill over frame");
 			goto overrun_cleanup;
 		}
 
 		/* Initialize metadata for the first block */
-		struct audio_metadata *meta = net_buf_user_data(current_frame);
-		*meta = usb_in_meta;
-		meta->data_len_us = 0;
-		meta->bytes_per_location = 0;
-		blocks_in_current_frame = 0;
+		struct audio_metadata *meta_spill_over = net_buf_user_data(frame_spillover);
+
+		*meta_spill_over = usb_in_meta;
+		meta_spill_over->data_len_us = 0;
+		meta_spill_over->bytes_per_location = 0;
+		blocks_in_frame_spillover = 0;
+
+		/* Add half the buffer to spill over frame */
+		half_buf_add(frame_spillover, (char *)buf + half_size, half_size,
+			     &blocks_in_frame_spillover);
+	} else {
+		/* Add block data directly to current frame */
+		net_buf_add_mem(frame_current, buf, size);
+		/* Update metadata */
+		struct audio_metadata *meta = net_buf_user_data(frame_current);
+
+		/* Accumulate one full 1 ms USB buffer, which counts as two 0.5 ms blocks. */
+		meta->data_len_us += usb_in_meta.data_len_us;
+		meta->bytes_per_location += usb_in_meta.bytes_per_location;
+		blocks_in_frame_current += 2;
 	}
-
-	/* Add block data directly to current frame */
-	net_buf_add_mem(current_frame, buf, size);
-
-	/* Update metadata */
-	struct audio_metadata *meta = net_buf_user_data(current_frame);
-
-	/* Accumulate per-block duration (typically 1 ms) */
-	meta->data_len_us += usb_in_meta.data_len_us;
-	meta->bytes_per_location += usb_in_meta.bytes_per_location;
-	blocks_in_current_frame++;
 
 	/* Release USB buffer */
 	k_mem_slab_free(&usb_rx_slab, buf);
 
 	/* Check if we have a complete frame */
-	if (blocks_in_current_frame >= CONFIG_FIFO_FRAME_SPLIT_NUM) {
+	if (blocks_in_frame_current >= CONFIG_FIFO_FRAME_SPLIT_NUM) {
 		/* Put complete frame into RX queue */
-		ret = k_msgq_put(audio_q_rx, (void *)&current_frame, K_NO_WAIT);
+		ret = k_msgq_put(audio_q_rx, (void *)&frame_current, K_NO_WAIT);
 		if (ret) {
 			LOG_ERR("Failed to store complete frame");
-			net_buf_unref(current_frame);
+			net_buf_unref(frame_current);
 		}
 
 		/* Reset for next frame */
-		current_frame = NULL;
-		blocks_in_current_frame = 0;
+		frame_current = NULL;
+		blocks_in_frame_current = 0;
 	}
 
 	return;
