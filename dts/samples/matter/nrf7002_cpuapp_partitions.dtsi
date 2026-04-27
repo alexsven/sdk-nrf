@@ -12,21 +12,25 @@
 &flash0 {
 	partitions {
 		boot_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
 			label = "mcuboot";
 			reg = <0x00000000 DT_SIZE_K(48)>;
 		};
 
 		slot0_partition: partition@c000 {
+			compatible = "zephyr,mapped-partition";
 			label = "image-0";
 			reg = <0x0000c000 DT_SIZE_K(940)>;
 		};
 
 		factory_data_partition: partition@f7000 {
+			compatible = "zephyr,mapped-partition";
 			label = "factory-data";
 			reg = <0x000f7000 DT_SIZE_K(4)>;
 		};
 
 		storage_partition: partition@f8000 {
+			compatible = "zephyr,mapped-partition";
 			label = "storage";
 			reg = <0x000f8000 DT_SIZE_K(32)>;
 		};
@@ -37,31 +41,37 @@
 	status = "okay";
 
 	partitions {
-		compatible = "fixed-partitions";
+		compatible = "zephyr,mapped-partition";
 		#address-cells = <1>;
 		#size-cells = <1>;
+		ranges;
 
 		slot1_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
 			label = "image-1";
 			reg = <0x00000000 DT_SIZE_K(940)>;
 		};
 
 		slot3_partition: partition@eb000 {
+			compatible = "zephyr,mapped-partition";
 			label = "image-3";
 			reg = <0x000eb000 DT_SIZE_K(224)>;
 		};
 
 		slot4_partition: partition@12b000 {
+			compatible = "zephyr,mapped-partition";
 			label = "image-4";
 			reg = <0x0012b000 DT_SIZE_K(132)>;
 		};
 
 		nrf70_wifi_fw_partition: nrf70_fw_partition: partition@12b200 {
+			compatible = "zephyr,mapped-partition";
 			label = "nrf70-wifi-fw";
 			reg = <0x0012b200 DT_SIZE_K(128)>;
 		};
 
 		slot5_partition: partition@14c000 {
+			compatible = "zephyr,mapped-partition";
 			label = "image-5";
 			reg = <0x0014c000 DT_SIZE_K(132)>;
 		};
