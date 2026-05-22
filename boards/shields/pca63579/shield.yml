@@ -1,0 +1,8 @@
+shield:
+  name: pca63579
+  full_name: PCA63579
+  vendor: nordic
+  supported_features:
+    - i2c
+    - i2s
+    - pdm

@@ -1,0 +1,66 @@
+/ {
+        chosen {
+                nordic,pm-ext-flash = &qspi_flash;
+        };
+
+        pwmleds {
+		compatible = "pwm-leds";
+
+		rgb1_red_pwm_led: pwm_led_0 {
+			pwms = <&nordic_expansion_header 7 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+
+		rgb1_green_pwm_led: pwm_led_1 {
+			pwms = <&nordic_expansion_header 11 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+
+		rgb1_blue_pwm_led: pwm_led_2 {
+			pwms = <&nordic_expansion_header 6 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+	};
+};
+
+&i2s24 {
+        compatible = "nordic,nrf-i2s";
+        status = "okay";
+        pinctrl-0 = <&i2s24_default>;
+        pinctrl-1 = <&i2s24_sleep>;
+        pinctrl-names = "default", "sleep";
+};
+
+&pdm20 {
+        status = "okay";
+        pinctrl-0 = <&pdm20_default>;
+        pinctrl-names = "default";
+};
+
+&pwm21    {
+        status = "okay";
+        pinctrl-0 = <&pwm21_default>;
+        pinctrl-1 = <&pwm21_sleep>;
+        pinctrl-names = "default", "sleep";
+};
+
+&twi23 {
+        status = "okay";
+        pinctrl-0 = <&twi23_default>;
+        pinctrl-1 = <&twi23_sleep>;
+        pinctrl-names = "default", "sleep";
+};
+
+&qspi {
+        status = "okay";
+        pinctrl-0 = <&qspi_default>;
+        pinctrl-names = "default";
+};
+
+&gpio0 {
+        status = "okay";
+
+        codec_int: int {
+                gpios = <&nordic_expansion_header 10 GPIO_ACTIVE_HIGH>;
+        };
+        line_detect: detect {
+                gpios = <&nordic_expansion_header 15 GPIO_ACTIVE_HIGH>;
+        };
+};
