@@ -274,7 +274,8 @@ Matter bridge
 nRF Audio (formerly nRF5340 Audio)
 ----------------------------------
 
-|no_changes_yet_note|
+* Removed prj_release.conf files from all nRF Audio applications, and the buildprog tool.
+  Users must specify themselves which configurations are desired in a release build.
 
 nRF Desktop
 -----------
