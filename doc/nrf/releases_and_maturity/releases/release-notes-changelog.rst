@@ -273,6 +273,14 @@ Matter bridge
 nRF Audio (formerly nRF5340 Audio)
 ----------------------------------
 
+* Added:
+
+  * A generalized audio time module that provides a unified interface for retrieving the current time in microseconds across a SoC.
+    The module uses the GRTC timer on nRF54L Series devices and the audio sync timer on other devices.
+  * Experimental support for the nRF54LM20 SoC in the nRF Audio applications.
+    The support is limited to the :ref:`unicast client app<nrf_audio_unicast_client_app>` application with USB as audio source, which can be built for the ``nrf54lm20dk/nrf54lm20a/cpuapp`` board target.
+    The support is experimental and not yet fully tested, so it is not recommended for production use.
+
 * Removed :file:`prj_release.conf` files from all nRF Audio applications, and the buildprog tool.
   Users must specify themselves which configurations are desired in a release build.
   See :ref:`nrf_audio_app_configuration_select_build` for more information.
