@@ -284,9 +284,13 @@ nRF Audio (formerly nRF5340 Audio)
     The support is limited to the :ref:`unicast client app<nrf_audio_unicast_client_app>` application with USB as audio source, which can be built for the ``nrf54lm20dk/nrf54lm20a/cpuapp`` board target.
     The support is experimental and not yet fully tested, so it is not recommended for production use.
 
-* Removed :file:`prj_release.conf` files from all nRF Audio applications, and the buildprog tool.
-  Users must specify themselves which configurations are desired in a release build.
-  See :ref:`nrf_audio_app_configuration_select_build` for more information.
+* Removed:
+
+  * :file:`prj_release.conf` files from all nRF Audio applications and from the buildprog tool.
+    You must now explicitly specify which configurations to include in a release build.
+    See :ref:`nrf_audio_app_configuration_select_build` for more information.
+  * The :kconfig:option:`CONFIG_BT_BAP_UNICAST_CONFIGURABLE` option from the unicast client and server applications.
+    This option was not useful because the unicast server range settings overwrite the bitrate configuration.
 
 nRF Desktop
 -----------
