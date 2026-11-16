@@ -14,6 +14,14 @@ config CUSTOM_BROADCASTER
 	help
 	  Incomplete feature for now, but will introduce support for multiple BIGs and subgroups.
 
+config MULTICHANNEL_AURACAST
+	bool "Two independent stereo Auracast programmes from USB"
+	depends on BT_BAP_BROADCAST_SOURCE && AUDIO_SOURCE_USB
+	depends on BOARD_NRF7120DK && !STREAM_BIDIRECTIONAL
+	help
+	  Select the multichannel_auracast application instead of broadcast_source.
+	  Requires its configuration fragment and four-channel USB overlay.
+
 config AUDIO_DEV
 	int "Select which device type to compile for. 1=HEADSET or 2=GATEWAY"
 	range 1 2

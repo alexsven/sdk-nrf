@@ -1,0 +1,73 @@
+config MULTICHANNEL_AURACAST
+	bool
+	default y
+
+config AUDIO_SOURCE_USB
+	bool
+	default y
+
+config AUDIO_SAMPLE_RATE_HZ
+	int
+	default 48000
+
+config AUDIO_BIT_DEPTH_BITS
+	int
+	default 16
+
+config AUDIO_BIT_DEPTH_OCTETS
+	int
+	default 2
+
+config AUDIO_INPUT_CHANNELS
+	int
+	default 4
+
+config AUDIO_OUTPUT_CHANNELS
+	int
+	default 2
+
+config AUDIO_FRAME_DURATION_US
+	int
+	default 10000
+
+config FIFO_FRAME_SPLIT_NUM
+	int
+	default 20
+
+config MODULE_AUDIO_USB_LOG_LEVEL
+	int
+	default 3
+
+config BT_ISO_TX_MTU
+	int
+	default 120
+
+config BT_BUF_EVT_RX_COUNT
+	int
+	default 10
+
+config BT_BUF_ACL_TX_COUNT
+	int
+	default 5
+
+config SW_CODEC_LC3
+	bool
+	default y
+
+config AUDIO_ENCODE_CHANNELS_MAX
+	int
+	default 4
+
+config AUDIO_DECODE_CHANNELS_MAX
+	int
+	default 2
+
+config LC3_BITRATE_MAX
+	int
+	default 124000
+
+config SW_CODEC_SELECT_LOG_LEVEL
+	int
+	default 3
+
+source "Kconfig"

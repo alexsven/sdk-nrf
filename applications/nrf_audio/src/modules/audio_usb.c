@@ -21,9 +21,18 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(audio_usb, CONFIG_MODULE_AUDIO_USB_LOG_LEVEL);
 
-#define TERMINAL_ID_HEADSET_OUT	  UAC2_ENTITY_ID(DT_NODELABEL(out_terminal))
 #define TERMINAL_ID_HEADPHONES_OUT UAC2_ENTITY_ID(DT_NODELABEL(hp_out_terminal))
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
+#define TERMINAL_ID_HEADSET_OUT	  UAC2_ENTITY_ID(DT_NODELABEL(out_terminal))
 #define TERMINAL_ID_HEADSET_IN	  UAC2_ENTITY_ID(DT_NODELABEL(in_terminal))
+#endif
+#if defined(CONFIG_MULTICHANNEL_AURACAST)
+#define USB_INPUT_LOCATIONS                                                                        \
+	(BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT |                            \
+	 BT_AUDIO_LOCATION_BACK_LEFT | BT_AUDIO_LOCATION_BACK_RIGHT)
+#else
+#define USB_INPUT_LOCATIONS (BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT)
+#endif
 
 /* Absolute minimum is 2 OUT buffers but add 2 additional buffers to prevent out of memory
  * errors when USB host decides to perform rapid terminal enable/disable cycles.
@@ -31,9 +40,12 @@ LOG_MODULE_REGISTER(audio_usb, CONFIG_MODULE_AUDIO_USB_LOG_LEVEL);
 #define USB_BLOCKS 4
 
 /* See udc_buf.h for more information about UDC_BUF_GRANULARITY and UDC_BUF_ALIGN */
-K_MEM_SLAB_DEFINE_STATIC(usb_out_slab, ROUND_UP(USB_BLOCK_MULTI_CHAN_1MS_SIZE, UDC_BUF_GRANULARITY),
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
+K_MEM_SLAB_DEFINE_STATIC(usb_out_slab, ROUND_UP(USB_TX_BLOCK_1MS_SIZE, UDC_BUF_GRANULARITY),
 			 USB_BLOCKS, UDC_BUF_ALIGN);
-K_MEM_SLAB_DEFINE_STATIC(usb_in_slab, ROUND_UP(USB_BLOCK_MULTI_CHAN_1MS_SIZE, UDC_BUF_GRANULARITY),
+static uint32_t out_num_underruns;
+#endif
+K_MEM_SLAB_DEFINE_STATIC(usb_in_slab, ROUND_UP(USB_RX_BLOCK_1MS_SIZE, UDC_BUF_GRANULARITY),
 			 USB_BLOCKS, UDC_BUF_ALIGN);
 
 static struct k_msgq *audio_q_in;
@@ -43,11 +55,10 @@ static struct k_msgq *audio_q_out;
  * hence the dividing by two
  */
 NET_BUF_POOL_FIXED_DEFINE(pool_in, USB_BLOCKS,
-			  (USB_BLOCK_MULTI_CHAN_1MS_SIZE * CONFIG_FIFO_FRAME_SPLIT_NUM / 2),
+			  (USB_RX_BLOCK_1MS_SIZE * CONFIG_FIFO_FRAME_SPLIT_NUM / 2),
 			  sizeof(struct audio_metadata), NULL);
 
 static uint32_t in_num_overruns;
-static uint32_t out_num_underruns;
 static bool terminal_headset_out_enabled;
 static bool terminal_headphones_out_enabled;
 static bool terminal_headset_in_enabled;
@@ -63,10 +74,9 @@ struct audio_metadata usb_in_meta = {.data_coding = PCM,
 				     .sample_rate_hz = CONFIG_AUDIO_SAMPLE_RATE_HZ,
 				     .bits_per_sample = CONFIG_AUDIO_BIT_DEPTH_BITS,
 				     .carried_bits_per_sample = CONFIG_AUDIO_BIT_DEPTH_BITS,
-				     .bytes_per_location = USB_BLOCK_MULTI_CHAN_1MS_SIZE / 2,
+				     .bytes_per_location = USB_BLOCK_1MS_MONO_SIZE,
 				     .interleaved = true,
-				     .locations = BT_AUDIO_LOCATION_FRONT_LEFT |
-						  BT_AUDIO_LOCATION_FRONT_RIGHT,
+				     .locations = USB_INPUT_LOCATIONS,
 				     .bad_data = 0};
 
 static void terminal_update_cb(const struct device *dev, uint8_t terminal, bool enabled,
@@ -76,13 +86,18 @@ static void terminal_update_cb(const struct device *dev, uint8_t terminal, bool 
 	ARG_UNUSED(microframes);
 	ARG_UNUSED(user_data);
 
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 	if (terminal == TERMINAL_ID_HEADSET_OUT) {
 		terminal_headset_out_enabled = enabled;
-	} else if (terminal == TERMINAL_ID_HEADPHONES_OUT) {
+	} else
+#endif
+	if (terminal == TERMINAL_ID_HEADPHONES_OUT) {
 		terminal_headphones_out_enabled = enabled;
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 	} else if (terminal == TERMINAL_ID_HEADSET_IN) {
 		terminal_headset_in_enabled = enabled;
 		out_num_underruns = 0;
+#endif
 	} else {
 		LOG_WRN("Unknown terminal ID: %d", terminal);
 		return;
@@ -93,6 +108,7 @@ static void terminal_update_cb(const struct device *dev, uint8_t terminal, bool 
 
 static void usb_send_cb(const struct device *dev, void *user_data)
 {
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 	int ret;
 	void *pcm_buf;
 	struct net_buf *usb_data_out;
@@ -148,8 +164,13 @@ static void usb_send_cb(const struct device *dev, void *user_data)
 	}
 
 	net_buf_unref(usb_data_out);
+#else
+	ARG_UNUSED(dev);
+	ARG_UNUSED(user_data);
+#endif
 }
 
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 static void send_buf_release_cb(const struct device *dev, uint8_t terminal, void *buf,
 				void *user_data)
 {
@@ -163,19 +184,33 @@ static void send_buf_release_cb(const struct device *dev, uint8_t terminal, void
 
 	k_mem_slab_free(&usb_out_slab, buf);
 }
+#endif
 
 static void *get_recv_buf_cb(const struct device *dev, uint8_t terminal, uint16_t size,
 			     void *user_data)
 {
 	ARG_UNUSED(dev);
-	ARG_UNUSED(size);
 	ARG_UNUSED(user_data);
 
 	int ret;
 	void *buf = NULL;
 
-	if (terminal == TERMINAL_ID_HEADSET_OUT || terminal == TERMINAL_ID_HEADPHONES_OUT) {
+	if (size > USB_RX_BLOCK_1MS_SIZE) {
+		LOG_ERR("USB receive request exceeds buffer capacity: %u", size);
+		return NULL;
+	}
+
+	if (terminal == TERMINAL_ID_HEADPHONES_OUT
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
+	    || terminal == TERMINAL_ID_HEADSET_OUT
+#endif
+	) {
 		ret = k_mem_slab_alloc(&usb_in_slab, &buf, K_NO_WAIT);
+		if (ret) {
+			LOG_WRN("Could not allocate USB receive buffer: %d", ret);
+		}
+	} else {
+		LOG_ERR("Receive buffer requested for unknown terminal: %u", terminal);
 	}
 
 	return buf;
@@ -195,6 +230,41 @@ static void half_buf_add(struct net_buf *frame, void *data, uint16_t size,
 	meta->bytes_per_location += half_bytes_per_location;
 	(*blocks_in_frame)++;
 }
+
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+static void usb_performance_record(uint16_t size)
+{
+	static uint32_t window_start;
+	static uint32_t packets;
+	static uint32_t wrong_size;
+	static uint32_t previous_overruns;
+	static uint32_t last_packet;
+	static uint32_t gap_max_us;
+	uint32_t now = k_uptime_get_32();
+	uint32_t cycles = k_cycle_get_32();
+
+	if (packets == 0) {
+		window_start = now;
+	} else {
+		gap_max_us = MAX(gap_max_us, k_cyc_to_us_floor32(cycles - last_packet));
+	}
+	last_packet = cycles;
+	packets++;
+	wrong_size += size != USB_RX_BLOCK_1MS_SIZE;
+
+	if (now - window_start < 5000) {
+		return;
+	}
+
+	LOG_INF("PERF USB %u packets/%u ms, wrong size %u, gap max %u us, overruns %u",
+		packets, now - window_start, wrong_size, gap_max_us,
+		in_num_overruns - previous_overruns);
+	previous_overruns = in_num_overruns;
+	packets = 0;
+	wrong_size = 0;
+	gap_max_us = 0;
+}
+#endif
 
 static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, uint16_t size,
 			 void *user_data)
@@ -223,8 +293,11 @@ static void data_recv_cb(const struct device *dev, uint8_t terminal, void *buf, 
 	}
 
 	/* Size validation */
-	if (unlikely(size != USB_BLOCK_MULTI_CHAN_1MS_SIZE)) {
-		LOG_WRN("Incorrect buffer size: %d (%u)", size, USB_BLOCK_MULTI_CHAN_1MS_SIZE);
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+	usb_performance_record(size);
+#endif
+	if (unlikely(size != USB_RX_BLOCK_1MS_SIZE)) {
+		LOG_WRN("Incorrect buffer size: %d (%u)", size, USB_RX_BLOCK_1MS_SIZE);
 		k_mem_slab_free(&usb_in_slab, buf);
 		return;
 	}
@@ -335,7 +408,9 @@ overrun_cleanup:
 static struct uac2_ops ops = {
 	.sof_cb = usb_send_cb,
 	.terminal_update_cb = terminal_update_cb,
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 	.buf_release_cb = send_buf_release_cb,
+#endif
 	.get_recv_buf = get_recv_buf_cb,
 	.data_recv_cb = data_recv_cb,
 };
@@ -416,11 +491,14 @@ int audio_usb_init(bool host_in, bool host_out)
 	local_host_in = host_in;
 	local_host_out = host_out;
 
+#if !defined(CONFIG_MULTICHANNEL_AURACAST)
 	if (host_in && host_out) {
 		dev = DEVICE_DT_GET(DT_NODELABEL(uac2_headset));
 		usb_sof_synchronized = DT_PROP(DT_NODELABEL(uac_aclk), sof_synchronized);
 		LOG_INF("USB initialized as bidirectional (headset).");
-	} else if (host_out) {
+	} else
+#endif
+	if (!host_in && host_out) {
 		dev = DEVICE_DT_GET(DT_NODELABEL(uac2_headphones));
 		usb_sof_synchronized = DT_PROP(DT_NODELABEL(hp_uac_aclk), sof_synchronized);
 		LOG_INF("USB initialized as unidirectional (headphones only).");

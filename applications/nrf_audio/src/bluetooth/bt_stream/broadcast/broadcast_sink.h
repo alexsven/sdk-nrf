@@ -88,6 +88,20 @@ int broadcast_sink_start(void);
 int broadcast_sink_stop(void);
 
 /**
+ * @brief Toggle between subgroups 0 and 1 of the current broadcaster.
+ *
+ * Retains PA sync and the device's channel location. Streaming resumes after
+ * the current BISes stop and a new BASE is received; a paused sink stays paused.
+ *
+ * @retval 0 Switching requested.
+ * @retval -EAGAIN No broadcast configuration is available.
+ * @retval -ENOENT The target subgroup is not advertised.
+ * @retval -EBUSY A stream transition is already in progress.
+ * @return Other negative values if stopping the current BISes fails.
+ */
+int broadcast_sink_subgroup_toggle(void);
+
+/**
  * @brief	Disable the LE Audio broadcast (BIS) sink.
  *
  * @return	0 for success, error otherwise.

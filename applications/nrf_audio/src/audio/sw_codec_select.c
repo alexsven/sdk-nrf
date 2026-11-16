@@ -193,7 +193,9 @@ int sw_codec_encode(struct net_buf *audio_frame_in, struct net_buf *audio_frame_
 
 				ret = sw_codec_lc3_enc_run(
 					enc_in, enc_in_size, meta_out->bitrate_bps, chan_out,
-					meta_in->bytes_per_location, enc_out, &bytes_written);
+					net_buf_tailroom(audio_frame_out) -
+						(enc_out - audio_frame_out->data),
+					enc_out, &bytes_written);
 				ERR_CHK_MSG(ret, "Encode failed");
 
 				enc_out += bytes_written;

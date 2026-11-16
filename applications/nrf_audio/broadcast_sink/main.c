@@ -77,7 +77,6 @@ static void button_msg_sub_thread(void)
 {
 	int ret;
 	const struct zbus_channel *chan;
-	bool broadcast_alt = true;
 
 	while (1) {
 		ret = zbus_sub_wait(&button_evt_sub, &chan, K_FOREVER);
@@ -135,45 +134,10 @@ static void button_msg_sub_thread(void)
 			break;
 
 		case BUTTON_5:
-			if (IS_ENABLED(CONFIG_AUDIO_MUTE)) {
-				ret = bt_r_and_c_volume_mute(false);
-				if (ret) {
-					LOG_WRN("Failed to mute, ret: %d", ret);
-				}
-
-				break;
-			}
-
-			if (IS_ENABLED(CONFIG_BT_AUDIO_SCAN_DELEGATOR)) {
-				/* If this device is a scan delegator, we depend on a broadcast
-				 * assistant to transfer the broadcast source info.
-				 * It should not scan by itself.
-				 */
-				break;
-			}
-
-			ret = broadcast_sink_disable();
+			ret = broadcast_sink_subgroup_toggle();
 			if (ret) {
-				LOG_ERR("Failed to disable the broadcast sink: %d", ret);
-				break;
+				LOG_WRN("Failed to switch broadcast subgroup: %d", ret);
 			}
-
-			if (broadcast_alt) {
-				ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_BROADCAST,
-							 CONFIG_BT_AUDIO_BROADCAST_NAME_ALT,
-							 BRDCAST_ID_NOT_USED);
-				broadcast_alt = false;
-			} else {
-				ret = bt_mgmt_scan_start(0, 0, BT_MGMT_SCAN_TYPE_BROADCAST,
-							 CONFIG_BT_AUDIO_BROADCAST_NAME,
-							 BRDCAST_ID_NOT_USED);
-				broadcast_alt = true;
-			}
-
-			if (ret) {
-				LOG_WRN("Failed to start scanning for broadcaster: %d", ret);
-			}
-
 			break;
 
 		default:

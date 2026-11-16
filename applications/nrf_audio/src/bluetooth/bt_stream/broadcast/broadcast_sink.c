@@ -83,6 +83,16 @@ static le_audio_receive_cb receive_cb;
 
 static bool init_routine_completed;
 static bool paused;
+static bool base_config_ready;
+static bool subgroup_switch_pending;
+static uint8_t selected_subgroup;
+static uint8_t requested_subgroup = UINT8_MAX;
+static uint8_t subgroup_count;
+
+struct subgroup_parse_context {
+	uint8_t index;
+	bool suitable_stream_found;
+};
 
 static struct bt_csip_set_member_svc_inst *csip;
 
@@ -147,6 +157,13 @@ static int broadcast_sink_cleanup(void)
 
 		broadcast_sink = NULL;
 	}
+
+	base_config_ready = false;
+	subgroup_switch_pending = false;
+	requested_subgroup = UINT8_MAX;
+	selected_subgroup = 0;
+	subgroup_count = 0;
+	bis_index_bitfield = 0;
 
 	return 0;
 }
@@ -240,6 +257,9 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 	case BT_HCI_ERR_LOCALHOST_TERM_CONN:
 		LOG_INF("Stream stopped by user");
 		le_audio_event_publish(LE_AUDIO_EVT_NOT_STREAMING);
+		if (subgroup_switch_pending && sync_stream_cnt == 0) {
+			init_routine_completed = false;
+		}
 
 		break;
 
@@ -303,7 +323,7 @@ static struct bt_bap_stream_ops stream_ops = {
  * @brief	Parse a BIS in the context of a base subgroup.
  *
  * @param bis       Pointer to the BIS to parse.
- * @param user_data Pointer to user data (not used).
+ * @param user_data Subgroup-level codec information inherited by each BIS.
  *
  * @return true if parsing should continue, false otherwise.
  */
@@ -311,6 +331,7 @@ static bool bis_per_subgroup_parse(const struct bt_bap_base_subgroup_bis *bis, v
 {
 	int ret;
 	struct bt_audio_codec_cfg codec_cfg = {0};
+	struct audio_codec_info info = *(struct audio_codec_info *)user_data;
 
 	LOG_DBG("BIS found, index %d", bis->index);
 
@@ -322,26 +343,30 @@ static bool bis_per_subgroup_parse(const struct bt_bap_base_subgroup_bis *bis, v
 		return true;
 	}
 
-	get_codec_info(&codec_cfg, &audio_codec_info[bis->index - 1]);
+	get_codec_info(&codec_cfg, &info);
 
 	LOG_DBG("Channel allocation: 0x%x for BIS index %d",
-		audio_codec_info[bis->index - 1].chan_allocation, bis->index);
+		info.chan_allocation, bis->index);
 	enum bt_audio_location device_location_temp;
 
 	device_location_get(&device_location_temp);
 
-	if (!(audio_codec_info[bis->index - 1].chan_allocation & device_location_temp)) {
+	if (!(info.chan_allocation & device_location_temp)) {
 		LOG_DBG("BIS idx %d channel alloc. 0x%x does not match this device' location 0x%x",
-			bis->index, audio_codec_info[bis->index - 1].chan_allocation,
-			device_location_temp);
+			bis->index, info.chan_allocation, device_location_temp);
 		return true;
 	}
 
-	if (POPCOUNT(bis_index_bitfield) >= CONFIG_BT_AUDIO_CONCURRENT_RX_STREAMS_MAX) {
+	uint8_t stream_index = POPCOUNT(bis_index_bitfield);
+
+	if (stream_index >= CONFIG_BT_AUDIO_CONCURRENT_RX_STREAMS_MAX ||
+	    stream_index >= ARRAY_SIZE(audio_codec_info)) {
 		LOG_DBG("Maximum number of BISes reached, ignoring BIS index %d", bis->index);
 		return true;
 	}
 
+	/* BIS numbers span the entire BIG; codec slots only cover our selected streams. */
+	audio_codec_info[stream_index] = info;
 	bis_index_bitfield |= BIT(bis->index - 1);
 	LOG_DBG("BIS index %d added to bitfield 0x%08x", bis->index, bis_index_bitfield);
 
@@ -354,7 +379,12 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 	int bis_num;
 	struct bt_audio_codec_cfg codec_cfg = {0};
 	struct bt_bap_base_codec_id codec_id;
-	bool *suitable_stream_found = user_data;
+	struct subgroup_parse_context *context = user_data;
+	uint8_t index = context->index++;
+
+	if (requested_subgroup != UINT8_MAX && index != requested_subgroup) {
+		return true;
+	}
 
 	ret = bt_bap_base_subgroup_codec_to_codec_cfg(subgroup, &codec_cfg);
 	if (ret) {
@@ -363,7 +393,7 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 	}
 
 	ret = bt_bap_base_get_subgroup_codec_id(subgroup, &codec_id);
-	if (ret && codec_id.cid != BT_HCI_CODING_FORMAT_LC3) {
+	if (ret || codec_id.id != BT_HCI_CODING_FORMAT_LC3) {
 		LOG_WRN("Failed to get codec ID or codec ID is not supported: %d", ret);
 		return true;
 	}
@@ -383,21 +413,26 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 	bis_num = bt_bap_base_get_subgroup_bis_count(subgroup);
 	LOG_DBG("Subgroup %p has %d BISes", (void *)subgroup, bis_num);
 	if (bis_num > 0) {
-		*suitable_stream_found = true;
+		struct audio_codec_info common_info = {
+			.id = codec_id.id,
+			.cid = codec_id.cid,
+			.vid = codec_id.vid,
+		};
 
-		for (int i = 0; i < bis_num; i++) {
-			get_codec_info(&codec_cfg, &audio_codec_info[i]);
-			audio_codec_info[i].id = codec_id.id;
-			audio_codec_info[i].cid = codec_id.cid;
-			audio_codec_info[i].vid = codec_id.vid;
-		}
-
-		ret = bt_bap_base_subgroup_foreach_bis(subgroup, bis_per_subgroup_parse, NULL);
+		get_codec_info(&codec_cfg, &common_info);
+		ret = bt_bap_base_subgroup_foreach_bis(subgroup, bis_per_subgroup_parse,
+						     &common_info);
 		if (ret < 0) {
 			LOG_WRN("Could not get BIS for subgroup %p: %d", (void *)subgroup, ret);
+			bis_index_bitfield = 0;
+			return true;
 		}
 
-		return false;
+		if (bis_index_bitfield != 0) {
+			context->suitable_stream_found = true;
+			selected_subgroup = index;
+			return false;
+		}
 	}
 
 	return true;
@@ -605,25 +640,33 @@ static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap
 			 size_t base_size)
 {
 	int ret;
-	bool suitable_stream_found = false;
+	struct subgroup_parse_context context = {0};
 
-	if (init_routine_completed) {
+	if (init_routine_completed || (subgroup_switch_pending && sync_stream_cnt != 0)) {
 		return;
 	}
 
 	sync_stream_cnt = 0;
+	bis_index_bitfield = 0;
+	base_config_ready = false;
+	memset(audio_codec_info, 0, sizeof(audio_codec_info));
 
-	uint32_t subgroup_count = bt_bap_base_get_subgroup_count(base);
+	ret = bt_bap_base_get_subgroup_count(base);
+	if (ret < 0) {
+		LOG_WRN("Failed to get subgroup count: %d", ret);
+		return;
+	}
+	subgroup_count = ret;
 
 	LOG_DBG("Received BASE with %d subgroup(s) from broadcast sink", subgroup_count);
 
-	ret = bt_bap_base_foreach_subgroup(base, base_subgroup_cb, &suitable_stream_found);
+	ret = bt_bap_base_foreach_subgroup(base, base_subgroup_cb, &context);
 	if (ret != 0 && ret != -ECANCELED) {
 		LOG_WRN("Failed to parse subgroups: %d", ret);
 		return;
 	}
 
-	if (suitable_stream_found) {
+	if (context.suitable_stream_found) {
 		ret = bt_bap_base_get_pres_delay(base);
 		if (ret == -EINVAL) {
 			LOG_WRN("Failed to get pres_delay: %d", ret);
@@ -634,6 +677,10 @@ static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap
 		} else {
 			audio_codec_info[0].pd = ret;
 		}
+		base_config_ready = true;
+		subgroup_switch_pending = false;
+		LOG_INF("Selected subgroup %u, BIS bitfield 0x%08x", selected_subgroup,
+			bis_index_bitfield);
 		le_audio_event_publish(LE_AUDIO_EVT_CONFIG_RECEIVED);
 
 		if (IS_ENABLED(CONFIG_BT_AUDIO_BROADCAST_BASE_PRINT)) {
@@ -654,7 +701,7 @@ static void syncable_cb(struct bt_bap_broadcast_sink *sink, const struct bt_iso_
 
 	LOG_DBG("Broadcast sink is syncable");
 
-	if (paused) {
+	if (paused || !base_config_ready || subgroup_switch_pending) {
 		LOG_DBG("Syncable received, but in paused state");
 		return;
 	}
@@ -791,10 +838,8 @@ int le_audio_concurrent_sync_num_get(uint8_t *num_streams, enum bt_audio_locatio
 	*num_streams = sync_stream_cnt;
 	*locations = 0;
 
-	for (int i = 0; i < ARRAY_SIZE(audio_codec_info); i++) {
-		if (bis_index_bitfield & BIT(i)) {
-			*locations |= audio_codec_info[i].chan_allocation;
-		}
+	for (int i = 0; i < POPCOUNT(bis_index_bitfield); i++) {
+		*locations |= audio_codec_info[i].chan_allocation;
 	}
 
 	return 0;
@@ -908,6 +953,51 @@ int broadcast_sink_stop(void)
 		return ret;
 	}
 
+	return 0;
+}
+
+int broadcast_sink_subgroup_toggle(void)
+{
+	if (subgroup_switch_pending) {
+		LOG_WRN("Subgroup switch already in progress");
+		return -EBUSY;
+	}
+	if (broadcast_sink == NULL || !base_config_ready) {
+		LOG_WRN("No broadcast configuration available for subgroup switching");
+		return -EAGAIN;
+	}
+
+	uint8_t target = selected_subgroup == 0 ? 1 : 0;
+
+	if (target >= subgroup_count) {
+		LOG_WRN("Broadcaster does not advertise subgroup %u", target);
+		return -ENOENT;
+	}
+	if ((!paused && !is_any_active_streams()) || (paused && sync_stream_cnt != 0)) {
+		LOG_WRN("BIS start/stop is still in progress");
+		return -EBUSY;
+	}
+
+	uint8_t previous_request = requested_subgroup;
+
+	requested_subgroup = target;
+	subgroup_switch_pending = true;
+	base_config_ready = false;
+	if (sync_stream_cnt != 0) {
+		int ret = bt_bap_broadcast_sink_stop(broadcast_sink);
+
+		if (ret) {
+			requested_subgroup = previous_request;
+			subgroup_switch_pending = false;
+			base_config_ready = true;
+			LOG_ERR("Failed to stop BISes for subgroup switch: %d", ret);
+			return ret;
+		}
+	} else {
+		init_routine_completed = false;
+	}
+
+	LOG_INF("Switching from subgroup %u to %u", selected_subgroup, target);
 	return 0;
 }
 

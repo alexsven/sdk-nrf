@@ -8,6 +8,14 @@ rsource "Kconfig.defaults"
 
 menu "Audio"
 
+config AUDIO_PERFORMANCE_DIAGNOSTICS
+	bool "Measure multichannel USB audio processing deadlines"
+	depends on MULTICHANNEL_AURACAST
+	help
+	  Log five-second aggregates of four-channel encoding and sending time,
+	  missed frame budgets, input queue occupancy and USB packet delivery.
+	  Measurements use elapsed time and include preemption and blocking.
+
 choice AUDIO_FRAME_DURATION
 	prompt "Select frame duration - 7.5 ms frame duration is not tested"
 	default AUDIO_FRAME_DURATION_10_MS
@@ -129,6 +137,7 @@ config AUDIO_INPUT_CHANNELS
 	default 2 if AUDIO_SOURCE_I2S
 	default 2 if AUDIO_SOURCE_USB
 	default 1
+	range 4 4 if MULTICHANNEL_AURACAST
 	range 1 2
 	help
 	  Maximum number of audio channels that can be physically input.

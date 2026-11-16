@@ -1,0 +1,8 @@
+/*
+ * Copyright (c) 2026 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+#include "../../../applications/nrf_audio/boards/common/usb_audio.dtsi"
+#include "../../../applications/nrf_audio/multichannel_auracast/usb.overlay"
