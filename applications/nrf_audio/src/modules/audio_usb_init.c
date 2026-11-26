@@ -11,7 +11,7 @@
 #include <zephyr/usb/bos.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_DECLARE(audio_usb);
+LOG_MODULE_DECLARE(audio_usb, CONFIG_MODULE_AUDIO_USB_LOG_LEVEL);
 
 /* By default, do not register the USB DFU class DFU mode instance. */
 static const char *const blocklist[] = {
@@ -101,15 +101,18 @@ struct usbd_context *audio_usbd_init_device(usbd_msg_cb_t msg_cb)
 {
 	int ret;
 
+	LOG_DBG("Setting up USB descriptors and classes");
 	if (audio_usbd_setup_device(msg_cb) == NULL) {
 		return NULL;
 	}
 
+	LOG_DBG("Initializing USB device controller");
 	ret = usbd_init(&audio_usbd);
 	if (ret) {
 		LOG_ERR("Failed to initialize device support");
 		return NULL;
 	}
 
+	LOG_DBG("USB device controller initialized");
 	return &audio_usbd;
 }

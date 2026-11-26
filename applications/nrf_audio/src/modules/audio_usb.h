@@ -19,19 +19,22 @@
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usbd.h>
 
-#if (CONFIG_AUDIO_SOURCE_USB && !CONFIG_AUDIO_SAMPLE_RATE_48000_HZ &&                              \
-	MAX(CONFIG_AUDIO_INPUT_CHANNELS, CONFIG_AUDIO_OUTPUT_CHANNELS) != 2)
-/* Only 48kHz stereo is supported when using USB */
-#error USB only supports 48kHz stereo
-#endif /* (CONFIG_AUDIO_SOURCE_USB && !CONFIG_AUDIO_SAMPLE_RATE_48000_HZ) */
+#if defined(CONFIG_AUDIO_SOURCE_USB)
+BUILD_ASSERT(CONFIG_AUDIO_SAMPLE_RATE_HZ == 48000, "USB requires 48 kHz PCM");
+BUILD_ASSERT(CONFIG_AUDIO_BIT_DEPTH_BITS == 16, "USB requires 16-bit PCM");
+BUILD_ASSERT(CONFIG_AUDIO_INPUT_CHANNELS <= 2 ||
+	     (IS_ENABLED(CONFIG_MULTICHANNEL_AURACAST) && CONFIG_AUDIO_INPUT_CHANNELS == 4),
+	     "USB playback requires two channels, or four for multichannel Auracast");
+BUILD_ASSERT(CONFIG_AUDIO_OUTPUT_CHANNELS <= 2, "USB capture supports up to stereo");
+#endif
 
 #define USB_1MS_BLOCKS_NUM_MAX                                                                     \
 	((CONFIG_AUDIO_FRAME_DURATION_US / USEC_PER_MSEC) +                                        \
 	 (CONFIG_AUDIO_FRAME_DURATION_US % USEC_PER_MSEC ? 1 : 0))
 #define USB_BLOCK_1MS_MONO_SIZE                                                                    \
 	(CONFIG_AUDIO_SAMPLE_RATE_HZ * CONFIG_AUDIO_BIT_DEPTH_OCTETS / MSEC_PER_SEC)
-#define USB_BLOCK_MULTI_CHAN_1MS_SIZE                                                              \
-	(USB_BLOCK_1MS_MONO_SIZE * MAX(CONFIG_AUDIO_INPUT_CHANNELS, CONFIG_AUDIO_OUTPUT_CHANNELS))
+#define USB_RX_BLOCK_1MS_SIZE (USB_BLOCK_1MS_MONO_SIZE * MAX(2, CONFIG_AUDIO_INPUT_CHANNELS))
+#define USB_TX_BLOCK_1MS_SIZE (USB_BLOCK_1MS_MONO_SIZE * MAX(2, CONFIG_AUDIO_OUTPUT_CHANNELS))
 
 struct usbd_context *audio_usbd_init_device(usbd_msg_cb_t msg_cb);
 

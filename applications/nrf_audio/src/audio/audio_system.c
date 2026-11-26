@@ -47,7 +47,7 @@ NET_BUF_POOL_FIXED_DEFINE(audio_q_enc_pool, FIFO_ENC_POOL_BLK_COUNT, ENC_MULTI_C
 			  sizeof(struct audio_metadata), NULL);
 NET_BUF_POOL_FIXED_DEFINE(audio_q_dec_pool, FIFO_DEC_POOL_BLK_COUNT, PCM_NUM_BYTES_MULTI_CHAN,
 			  sizeof(struct audio_metadata), NULL);
-NET_BUF_POOL_FIXED_DEFINE(audio_q_out_pool, FIFO_OUT_BLOCK_COUNT, USB_BLOCK_MULTI_CHAN_1MS_SIZE,
+NET_BUF_POOL_FIXED_DEFINE(audio_q_out_pool, FIFO_OUT_BLOCK_COUNT, USB_TX_BLOCK_1MS_SIZE,
 			  sizeof(struct audio_metadata), NULL);
 
 static K_SEM_DEFINE(sem_encoder_start, 0, 1);
@@ -135,6 +135,57 @@ static void audio_headset_configure(void)
 	}
 }
 
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+static void encoder_performance_record(uint32_t encode_us, uint32_t send_us, uint32_t work_us,
+				       uint32_t queued)
+{
+	static uint32_t window_start;
+	static uint32_t frames;
+	static uint32_t encode_total;
+	static uint32_t encode_min = UINT32_MAX;
+	static uint32_t encode_max;
+	static uint32_t send_total;
+	static uint32_t send_max;
+	static uint32_t work_max;
+	static uint32_t missed;
+	static uint32_t queue_max;
+	uint32_t now = k_uptime_get_32();
+
+	if (frames == 0) {
+		window_start = now;
+	}
+
+	frames++;
+	encode_total += encode_us;
+	encode_min = MIN(encode_min, encode_us);
+	encode_max = MAX(encode_max, encode_us);
+	send_total += send_us;
+	send_max = MAX(send_max, send_us);
+	work_max = MAX(work_max, work_us);
+	missed += work_us > CONFIG_AUDIO_FRAME_DURATION_US;
+	queue_max = MAX(queue_max, queued);
+
+	if (now - window_start < 5000) {
+		return;
+	}
+
+	LOG_INF("PERF %u frames/%u ms: encode us min/avg/max %u/%u/%u", frames,
+		now - window_start, encode_min, encode_total / frames, encode_max);
+	LOG_INF("PERF send us avg/max %u/%u, work max %u, >%u us: %u, queue max %u",
+		send_total / frames, send_max, work_max, CONFIG_AUDIO_FRAME_DURATION_US,
+		missed, queue_max);
+	frames = 0;
+	encode_total = 0;
+	encode_min = UINT32_MAX;
+	encode_max = 0;
+	send_total = 0;
+	send_max = 0;
+	work_max = 0;
+	missed = 0;
+	queue_max = 0;
+}
+#endif
+
 static void encoder_thread(void *arg1, void *arg2, void *arg3)
 {
 	int ret;
@@ -153,6 +204,12 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 
 		ret = k_msgq_get(&audio_q_in, (void *)&audio_frame_in, K_FOREVER);
 		ERR_CHK_MSG(ret, "Failed to get complete audio frame from IN queue");
+
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+		uint32_t work_start = k_cycle_get_32();
+		uint32_t queued = k_msgq_num_used_get(&audio_q_in);
+		uint32_t encode_us = 0;
+#endif
 
 		if (likely(sw_codec_cfg.initialized && sw_codec_cfg.encoder.enabled)) {
 			audio_frame_out = net_buf_alloc(&audio_q_enc_pool, K_NO_WAIT);
@@ -200,7 +257,13 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 				}
 			}
 
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+			uint32_t encode_start = k_cycle_get_32();
+#endif
 			ret = sw_codec_encode(audio_frame_in, audio_frame_out);
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+			encode_us = k_cyc_to_us_floor32(k_cycle_get_32() - encode_start);
+#endif
 			if (ret) {
 				LOG_ERR("Encode failed: %d", ret);
 				net_buf_unref(audio_frame_out);
@@ -219,10 +282,21 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 			debug_trans_count = 0;
 		}
 
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+		uint32_t send_start = k_cycle_get_32();
+#endif
 		if (audio_frame_out != NULL) {
 			streamctrl_send(audio_frame_out);
 			net_buf_unref(audio_frame_out);
 		}
+
+#if defined(CONFIG_AUDIO_PERFORMANCE_DIAGNOSTICS)
+		uint32_t work_end = k_cycle_get_32();
+
+		encoder_performance_record(encode_us,
+					   k_cyc_to_us_floor32(work_end - send_start),
+					   k_cyc_to_us_floor32(work_end - work_start), queued);
+#endif
 
 		STACK_USAGE_PRINT("encoder_thread", &encoder_thread_data);
 	}
