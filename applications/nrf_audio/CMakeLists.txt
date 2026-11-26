@@ -40,7 +40,11 @@ if(CONFIG_BT_BAP_BROADCAST_SINK)
 endif()
 
 if(CONFIG_BT_BAP_BROADCAST_SOURCE)
-  add_subdirectory(broadcast_source)
+  if(CONFIG_MULTICHANNEL_AURACAST)
+    add_subdirectory(multichannel_auracast)
+  else()
+    add_subdirectory(broadcast_source)
+  endif()
 endif()
 
 if(CONFIG_BT_BAP_UNICAST_CLIENT)
