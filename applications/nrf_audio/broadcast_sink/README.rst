@@ -40,7 +40,16 @@ This application uses specific mapping for the following user interface elements
   * **PLAY/PAUSE** - Starts or pauses listening to the stream.
   * **VOL-** - Turns the playback volume down.
   * **VOL+** - Turns the playback volume up.
-  * **BTN 5** - Changes the gateway, if more than one is available.
+  * **BTN 5** - Cycles through the first mono BIS of subgroups 0, 1, 2, 3,
+    then back to subgroup 0. For the multichannel source these are English,
+    Spanish, French and Mandarin, respectively, in global BISes 1 through 4.
+    The sink starts at subgroup 0 BIS 0, regardless of its left/right location.
+    The selected stream is routed to the receiver output and periodic advertising
+    synchronization is retained. Switching briefly interrupts audio; a paused
+    receiver remains paused. If the next mono BIS is unavailable, the selection
+    is unchanged and a warning is logged. Wait for a switch to complete before
+    pressing again.
+    This replaces the previous alternate-gateway/mute action.
 
 * **LED1**:
 
@@ -108,6 +117,18 @@ To test the broadcast sink application, complete the following steps:
 #. Program the other DK with the :ref:`broadcast source <nrf_audio_broadcast_source_app>` application.
    The broadcast sink device automatically synchronizes with the broadcast source after programming.
 #. Proceed to testing the devices using the :ref:`nrf_audio_broadcast_sink_app_ui` buttons and LEDs.
+
+Native subgroup-selection tests
+==============================
+
+The focused tests exercise the four-stream cycle, mono channel routing,
+paused operation, and stop-error handling without a controller::
+
+   west build --no-sysbuild -b native_sim/native/64 \
+     nrf/tests/nrf_audio/broadcast_sink -d build-sink-subgroup-tests
+   build-sink-subgroup-tests/zephyr/zephyr.exe
+
+These tests do not replace on-device verification of switching and received audio.
 
 Dependencies
 ************

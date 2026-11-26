@@ -88,6 +88,21 @@ int broadcast_sink_start(void);
 int broadcast_sink_stop(void);
 
 /**
+ * @brief Cycle through the first mono BIS in subgroups 0 through 3.
+ *
+ * Subgroup positions are zero-based: 0, 1, 2, 3, then back to 0.
+ * Retains PA sync and routes the selected BIS to the receiver's output.
+ * A paused sink stays paused.
+ *
+ * @retval 0 Switching requested.
+ * @retval -EAGAIN No broadcast configuration is available.
+ * @retval -ENOENT The target mono BIS is not available.
+ * @retval -EBUSY A stream transition is already in progress.
+ * @return Other negative values if stopping the current BISes fails.
+ */
+int broadcast_sink_stream_next(void);
+
+/**
  * @brief	Disable the LE Audio broadcast (BIS) sink.
  *
  * @return	0 for success, error otherwise.
