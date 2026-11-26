@@ -25,13 +25,13 @@ config USBC_LOG_LEVEL
 	default 2
 
 config USBD_LOG_LEVEL
-	default 2
+	default 2 if USBD_LOG_LEVEL_DEFAULT
 
 config USBD_UAC2_LOG_LEVEL
 	default 2
 
 config UDC_DRIVER_LOG_LEVEL
-	default 2
+	default 2 if UDC_DRIVER_LOG_LEVEL_DEFAULT
 
 config USBD_MAX_SPEED
 	default 0 # FULL
