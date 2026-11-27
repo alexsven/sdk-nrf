@@ -71,6 +71,93 @@ To build the application, complete the following steps:
 
 After programming, the broadcast source automatically starts broadcasting the default 48-kHz audio stream.
 
+Wi-Fi stereo input
+==================
+
+An experimental Wi-Fi input is available for ``nrf7120dk/nrf7120/cpuapp``.
+It uses the standard broadcast source and its one subgroup with left and right
+BISes. USB and I2S are not used in this build. Build with both configuration
+fragments from the workspace root::
+
+   west build --sysbuild -b nrf7120dk/nrf7120/cpuapp nrf/applications/nrf_audio \
+     -d build-broadcast-wifi -- \
+     -DEXTRA_CONF_FILE="broadcast_source/overlay-broadcast_source.conf;broadcast_source/overlay-wifi.conf" \
+     -DEXTRA_DTC_OVERLAY_FILE=broadcast_source/wifi.overlay
+
+Flash the build with ``west flash -d build-broadcast-wifi``.
+The Wi-Fi ROM patch is included in the merged image selected by the flash runner.
+
+The Wi-Fi and Bluetooth LE coexistence driver is enabled. Wi-Fi low-power mode
+is disabled to avoid delayed or bursty audio delivery. Connect the DK and PC
+to the same access point; 5 GHz Wi-Fi is recommended for the first test.
+To save a WPA2-PSK network, enter the following in the DK's RTT shell,
+substituting the SSID and passphrase locally::
+
+   wifi cred add -s "<SSID>" -k 1 -p "<passphrase>"
+   kernel reboot cold
+
+The add command reports errors; a successful command returns to the shell
+prompt. After reboot, the DK automatically connects using the saved credentials
+and attempts to reconnect if the connection is lost. Inspect its connection and
+DHCP address in the RTT shell::
+
+   wifi status
+   net iface
+
+To change the password for the same SSID, repeat the add command with the new
+password and reboot. To move to a different SSID, add the new network, then
+delete the old one and reboot::
+
+   wifi cred add -s "<NEW_SSID>" -k 1 -p "<new passphrase>"
+   wifi cred delete "<OLD_SSID>"
+   kernel reboot cold
+
+Two credential slots allow the new network to be added before deleting the old
+one. If both slots are already occupied, delete an unwanted network first.
+Remove the old entry rather than relying on automatic selection between
+multiple saved networks. Check for errors after each command.
+
+Credentials are stored unencrypted in the settings partition and can be
+extracted by someone with device/debug access. Shell history is disabled, but
+the passphrase is visible when entered, and ``wifi cred list`` displays saved
+passwords in plaintext. Do not share RTT transcripts containing credentials.
+Deleting an entry does not guarantee secure erasure of old flash records.
+DHCP addresses can change; configure a DHCP reservation in the router if the
+sender should always use the same address.
+
+The audio receiver listens on UDP port 5004. The sender and receiver must be
+able to exchange traffic on the local network.
+
+On Windows 10/11 with 64-bit Python, install the sender dependency in a virtual
+environment from the ``broadcast_source/wifi_sender`` directory::
+
+   py -3 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   .\.venv\Scripts\python.exe wifi_audio_sender.py --list-devices
+   .\.venv\Scripts\python.exe wifi_audio_sender.py --device <index> --host <DK_IPv4_address>
+
+Choose the loopback device corresponding to the Windows playback endpoint used
+by the application. The sender captures the endpoint's shared audio mix, so
+other applications and system sounds on the same endpoint are included.
+It requests stereo, 48-kHz, 16-bit input; set the endpoint to a compatible
+format if opening the stream fails. Press Ctrl+C to stop the sender. The
+broadcaster outputs silence while no audio is available. UDP has no connection
+confirmation; sender output does not establish that the DK received data.
+
+The protocol sends a versioned header, session identifier and sequence number
+followed by 5 ms of interleaved stereo PCM in each datagram. The DK buffers
+audio, conceals short packet gaps with silence, rejects late packets, and uses
+small sample-rate corrections to limit clock drift. Longer gaps and buffer
+overruns cause rebuffering. Logs report these events and missed deadlines.
+
+Use only a trusted network: UDP audio is not authenticated or encrypted by the
+application, and other network clients can inject or intercept it. The default
+Auracast broadcast is also unencrypted. Use audio you are entitled to broadcast;
+WASAPI cannot capture protected content when the platform prevents it.
+This input, its coexistence behavior and the Windows sender have been tested
+on target hardware but require further validation; a successful build does
+not prove glitch-free playback.
+
 .. _nrf_audio_broadcast_source_app_testing:
 
 Testing

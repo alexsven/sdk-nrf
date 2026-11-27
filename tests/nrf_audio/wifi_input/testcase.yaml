@@ -1,0 +1,7 @@
+tests:
+  nrf_audio.wifi_input:
+    platform_allow: native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    tags:
+      - nrf_audio

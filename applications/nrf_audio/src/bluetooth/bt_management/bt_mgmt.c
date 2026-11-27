@@ -402,7 +402,7 @@ int bt_mgmt_bonding_clear(void)
 	/* TODO: Delay. Awaiting fix in NCSDK-35186 */
 	k_sleep(K_MSEC(100));
 
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
+	if (IS_ENABLED(CONFIG_SETTINGS) && IS_ENABLED(CONFIG_BT_CONN)) {
 		LOG_INF("Clearing all bonds");
 
 		ret = bt_unpair(BT_ID_DEFAULT, NULL);

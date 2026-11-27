@@ -2,6 +2,20 @@ sample:
   name: nRF Audio application
   description: LE Audio and Auracast implementation example
 tests:
+  applications.nrf_audio.gateway_broadcast_source_wifi:
+    integration_platforms:
+      - nrf7120dk/nrf7120/cpuapp
+    platform_allow:
+      - nrf7120dk/nrf7120/cpuapp
+    sysbuild: true
+    build_only: true
+    tags:
+      - ci_build
+      - sysbuild
+      - ci_applications_nrf_audio
+    extra_args:
+      - EXTRA_CONF_FILE="broadcast_source/overlay-broadcast_source.conf;broadcast_source/overlay-wifi.conf"
+      - EXTRA_DTC_OVERLAY_FILE=broadcast_source/wifi.overlay
   applications.nrf_audio.multichannel_auracast:
     integration_platforms:
       - nrf7120dk/nrf7120/cpuapp

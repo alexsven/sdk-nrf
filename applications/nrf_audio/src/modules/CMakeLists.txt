@@ -33,6 +33,10 @@ target_sources_ifdef(CONFIG_AUDIO_SOURCE_I2S app PRIVATE
   audio_i2s.c
 )
 
+target_sources_ifdef(CONFIG_AUDIO_SOURCE_WIFI app PRIVATE
+  audio_wifi.c
+)
+
 target_sources_ifdef(CONFIG_NRF_AUDIO_CS47L63_DRIVER app PRIVATE
   hw_codec.c
 )

@@ -18,6 +18,9 @@
 #include "audio_i2s.h"
 #include "hw_codec.h"
 #include "audio_usb.h"
+#if defined(CONFIG_AUDIO_SOURCE_WIFI)
+#include "audio_wifi.h"
+#endif
 #include "streamctrl.h"
 #include "audio_rate_control.h"
 
@@ -595,6 +598,9 @@ void audio_system_start(void)
 #if ((CONFIG_AUDIO_SOURCE_USB) && (CONFIG_AUDIO_DEV == GATEWAY))
 	ret = audio_usb_start(&audio_q_out, &audio_q_in);
 	ERR_CHK(ret);
+#elif defined(CONFIG_AUDIO_SOURCE_WIFI)
+	ret = audio_wifi_start(&audio_q_in);
+	ERR_CHK(ret);
 #else
 	if (IS_ENABLED(CONFIG_BOARD_NRF5340_AUDIO_DK_NRF5340_CPUAPP)) {
 		ret = hw_codec_default_conf_enable();
@@ -619,6 +625,8 @@ void audio_system_stop(void)
 
 #if ((CONFIG_AUDIO_DEV == GATEWAY) && CONFIG_AUDIO_SOURCE_USB)
 	audio_usb_stop();
+#elif defined(CONFIG_AUDIO_SOURCE_WIFI)
+	audio_wifi_stop();
 #else
 	if (IS_ENABLED(CONFIG_BOARD_NRF5340_AUDIO_DK_NRF5340_CPUAPP)) {
 		ret = hw_codec_soft_reset();
@@ -678,6 +686,12 @@ int audio_system_init(void)
 	ret = audio_usb_init(host_in, host_out);
 	if (ret) {
 		LOG_ERR("Failed to initialize USB: %d", ret);
+		return ret;
+	}
+#elif defined(CONFIG_AUDIO_SOURCE_WIFI)
+	ret = audio_wifi_init();
+	if (ret) {
+		LOG_ERR("Failed to initialize Wi-Fi audio: %d", ret);
 		return ret;
 	}
 #else

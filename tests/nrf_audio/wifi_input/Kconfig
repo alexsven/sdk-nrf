@@ -1,0 +1,27 @@
+mainmenu "Wi-Fi audio input test"
+
+config AUDIO_SAMPLE_RATE_HZ
+	int
+	default 48000
+
+config AUDIO_BIT_DEPTH_BITS
+	int
+	default 16
+
+config AUDIO_INPUT_CHANNELS
+	int
+	default 2
+
+config AUDIO_FRAME_DURATION_US
+	int
+	default 10000
+
+config BT_BUF_EVT_RX_COUNT
+	int
+	default 10
+
+config BT_BUF_ACL_TX_COUNT
+	int
+	default 5
+
+source "Kconfig.zephyr"
